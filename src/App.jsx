@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import {
   outdoorApparentTemp,
   indoorApparentTemp,
@@ -6,6 +6,7 @@ import {
   dewPoint,
   absoluteHumidity,
 } from './formulas.js'
+import { fetchCurrentWeather } from './weather.js'
 import './App.css'
 
 // ─── helpers ────────────────────────────────────────────────────────────────
@@ -172,6 +173,37 @@ function VentilationCard({ Tin, RHin, Tout, RHout }) {
   )
 }
 
+// ─── geo / weather status pill ──────────────────────────────────────────────
+
+const STATUS_LABEL = {
+  idle:     null,
+  loading:  '⟳ Standort wird ermittelt…',
+  locating: '⟳ Wetterdaten werden geladen…',
+  ok:       null,
+  denied:   'Standortzugriff verweigert – manuelle Eingabe',
+  error:    'Wetterdaten nicht verfügbar – manuelle Eingabe',
+}
+
+function GeoStatus({ status, location, onRefresh }) {
+  const label = STATUS_LABEL[status]
+  return (
+    <div className="geo-bar">
+      {status === 'ok' && location && (
+        <span className="geo-ok">
+          📍 {location.name ?? `${location.lat.toFixed(2)}, ${location.lon.toFixed(2)}`}
+          {' – Aktuelles Wetter'}
+        </span>
+      )}
+      {label && <span className={`geo-msg ${status}`}>{label}</span>}
+      {(status === 'ok' || status === 'denied' || status === 'error') && (
+        <button className="geo-refresh" onClick={onRefresh} title="Wetter neu laden">
+          ↺
+        </button>
+      )}
+    </div>
+  )
+}
+
 // ─── main app ───────────────────────────────────────────────────────────────
 
 export default function App() {
@@ -180,6 +212,46 @@ export default function App() {
   const [wind,     setWind]     = useState(12)
   const [inTemp,   setInTemp]   = useState(24)
   const [inRH,     setInRH]     = useState(55)
+
+  const [geoStatus,  setGeoStatus]  = useState('idle')
+  const [geoLocation, setGeoLocation] = useState(null)
+
+  async function loadWeather() {
+    if (!navigator.geolocation) {
+      setGeoStatus('denied')
+      return
+    }
+    setGeoStatus('loading')
+    navigator.geolocation.getCurrentPosition(
+      async ({ coords }) => {
+        setGeoStatus('locating')
+        try {
+          const w = await fetchCurrentWeather(coords.latitude, coords.longitude)
+          setOutTemp(w.temp)
+          setOutRH(w.humidity)
+          setWind(w.wind)
+          // Reverse-geocode with Open-Meteo's built-in location name isn't available,
+          // so we use the Nominatim API (OpenStreetMap, no key needed).
+          let name = null
+          try {
+            const r = await fetch(
+              `https://nominatim.openstreetmap.org/reverse?lat=${coords.latitude}&lon=${coords.longitude}&format=json`,
+              { headers: { 'Accept-Language': 'de' } }
+            )
+            const geo = await r.json()
+            name = geo.address?.city ?? geo.address?.town ?? geo.address?.village ?? geo.address?.county ?? null
+          } catch { /* name stays null, coordinates shown instead */ }
+          setGeoLocation({ lat: coords.latitude, lon: coords.longitude, name })
+          setGeoStatus('ok')
+        } catch {
+          setGeoStatus('error')
+        }
+      },
+      () => setGeoStatus('denied')
+    )
+  }
+
+  useEffect(() => { loadWeather() }, [])
 
   const out = outdoorApparentTemp(outTemp, outRH, wind)
   const inn = indoorApparentTemp(inTemp, inRH)
@@ -193,6 +265,7 @@ export default function App() {
       <header>
         <h1>Gefühlte Temperatur</h1>
         <p className="subtitle">Hitzeindex · Windchill · Lüftungscheck</p>
+        <GeoStatus status={geoStatus} location={geoLocation} onRefresh={loadWeather} />
       </header>
 
       <main>
