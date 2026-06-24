@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import {
   outdoorApparentTemp,
   indoorApparentTemp,
@@ -9,11 +9,9 @@ import {
 import { fetchCurrentWeather } from './weather.js'
 import './App.css'
 
-// ─── helpers ────────────────────────────────────────────────────────────────
+// ─── helpers ─────────────────────────────────────────────────────────────────
 
-function fmt1(n) {
-  return (Math.round(n * 10) / 10).toFixed(1)
-}
+function fmt1(n) { return (Math.round(n * 10) / 10).toFixed(1) }
 
 function colorClass(t) {
   if (t >= 40) return 'very-hot'
@@ -25,227 +23,229 @@ function colorClass(t) {
   return 'very-cold'
 }
 
-// ─── components ─────────────────────────────────────────────────────────────
+function ventVerdict(Tin, RHin, Tout, RHout) {
+  const a = ventilationAssessment(Tin, RHin, Tout, RHout)
+  const dry  = a.deltaAH < -0.3
+  const wet  = a.deltaAH >  0.3
+  const cool = a.deltaH  < -0.5
+  const warm = a.deltaH  >  0.5
+  if (a.condensationRisk)      return { short: 'Kondens.gefahr', cls: 'bad' }
+  if (dry && cool)             return { short: 'Empfohlen',      cls: 'good' }
+  if (dry && !warm)            return { short: 'Sinnvoll',       cls: 'good' }
+  if (dry || cool)             return { short: 'Abwägen',        cls: 'warn' }
+  if (!wet && !warm)           return { short: 'Kein Effekt',    cls: 'neutral' }
+  return                              { short: 'Nicht empfohlen',cls: 'bad' }
+}
 
-function Slider({ label, value, onChange, min, max, step, unit, note }) {
+// ─── Slider with pointer capture + touch resistance ───────────────────────────
+
+function Slider({ label, value, onChange, min, max, step, unit, info }) {
+  const inputRef = useRef()
+
+  function onPointerDown(e) {
+    e.currentTarget.setPointerCapture(e.pointerId)
+  }
+
   return (
     <div className="slider-group">
       <div className="slider-header">
         <span className="slider-label">{label}</span>
-        <span className="value-badge">{value}&thinsp;{unit}</span>
+        <span className="value-badge">{value}{' '}{unit}</span>
       </div>
       <input
+        ref={inputRef}
         type="range"
-        min={min}
-        max={max}
-        step={step}
-        value={value}
+        min={min} max={max} step={step} value={value}
         onChange={e => onChange(Number(e.target.value))}
+        onPointerDown={onPointerDown}
+        style={{ touchAction: 'pan-y' }}
       />
       <div className="slider-ends">
-        <span>{min}&thinsp;{unit}</span>
-        <span>{max}&thinsp;{unit}</span>
+        <span>{min}{' '}{unit}</span>
+        <span>{max}{' '}{unit}</span>
       </div>
-      {note && <p className="note">{note}</p>}
     </div>
   )
 }
 
-const FORMULA_LABEL = {
-  hitzeindex: 'Hitzeindex (Rothfusz/Steadman)',
-  windchill:  'Windchill (Environment Canada 2001)',
-  keine:      'Lufttemperatur – kein Korrektureffekt',
-}
+// ─── Info tooltip ─────────────────────────────────────────────────────────────
 
-function ApparentTempCard({ label, airTemp, apparentTemp, formula, dp, ah }) {
-  const diff = apparentTemp - airTemp
-  const cls = colorClass(apparentTemp)
+function Info({ children }) {
+  const [open, setOpen] = useState(false)
   return (
-    <div className={`apparent-card ${cls}`}>
-      <div className="apparent-label">{label}</div>
-      <div className="apparent-value">{fmt1(apparentTemp)}&thinsp;°C</div>
-      <div className="apparent-formula">{FORMULA_LABEL[formula]}</div>
-      {formula !== 'keine' && (
-        <div className="apparent-diff">
-          {diff >= 0 ? '+' : ''}{fmt1(diff)}&thinsp;°C vs. Lufttemperatur
-        </div>
-      )}
-      <div className="apparent-meta">
-        <span>Taupunkt&thinsp;{fmt1(dp)}&thinsp;°C</span>
-        <span>abs.&thinsp;{fmt1(ah)}&thinsp;g/m³</span>
+    <span className="info-wrap">
+      <button
+        className="info-btn"
+        onClick={e => { e.stopPropagation(); e.preventDefault(); setOpen(o => !o) }}
+        aria-label="Info"
+      >i</button>
+      {open && <span className="info-tip">{children}</span>}
+    </span>
+  )
+}
+
+// ─── Value chips in collapsible summary ──────────────────────────────────────
+
+function Chip({ children, cls }) {
+  return <span className={`chip ${cls ?? ''}`}>{children}</span>
+}
+
+// ─── Felt temperature cards ──────────────────────────────────────────────────
+
+const FORMULA_SHORT = {
+  hitzeindex: 'Hitzeindex',
+  windchill:  'Windchill',
+  keine:      '= Lufttemp.',
+}
+
+function ApparentCard({ side, airTemp, result, dp, ah }) {
+  const diff = result.value - airTemp
+  const cls  = colorClass(result.value)
+  return (
+    <div className={`ap-card ${cls}`}>
+      <div className="ap-side">{side}</div>
+      <div className="ap-val">{fmt1(result.value)}{' '}°C</div>
+      <div className="ap-formula">
+        {FORMULA_SHORT[result.formula]}
+        {result.formula !== 'keine' && (
+          <span className="ap-diff"> ({diff >= 0 ? '+' : ''}{fmt1(diff)})</span>
+        )}
+      </div>
+      <div className="ap-meta">
+        <span>
+          Tp{' '}{fmt1(dp)}°C
+          <Info>Taupunkt: Temperatur, bei der der Wasserdampf der Luft zu kondensieren beginnt.</Info>
+        </span>
+        <span>
+          {fmt1(ah)}{' '}g/m³
+          <Info>Absolute Feuchte: Tatsächlicher Wassergehalt der Luft – temperaturunabhängig.</Info>
+        </span>
       </div>
     </div>
   )
 }
 
-function DeltaRow({ label, inVal, outVal, unit, lowerIsBetter }) {
+// ─── Ventilation table ────────────────────────────────────────────────────────
+
+function DeltaRow({ label, inVal, outVal, unit, info }) {
   const delta = outVal - inVal
-  const better = lowerIsBetter ? delta < -0.5 : delta > 0.5
-  const worse  = lowerIsBetter ? delta > 0.5  : delta < -0.5
-  const sign   = delta >= 0 ? '+' : ''
+  const sign  = delta >= 0 ? '+' : ''
+  const cls   = Math.abs(delta) < 0.4 ? 'neutral' : delta < 0 ? 'good' : 'bad'
   return (
-    <div className="delta-row">
-      <span className="delta-metric">{label}</span>
-      <span className="delta-in">{fmt1(inVal)}&thinsp;{unit}</span>
-      <span className="delta-arrow">→</span>
-      <span className="delta-out">{fmt1(outVal)}&thinsp;{unit}</span>
-      <span className={`delta-badge ${better ? 'good' : worse ? 'bad' : 'neutral'}`}>
-        {sign}{fmt1(delta)}&thinsp;{unit}
+    <div className="d-row">
+      <span className="d-label">
+        {label}
+        {info && <Info>{info}</Info>}
       </span>
+      <span className="d-in">{fmt1(inVal)}</span>
+      <span className="d-arrow">→</span>
+      <span className="d-out">{fmt1(outVal)}</span>
+      <span className={`d-delta ${cls}`}>{sign}{fmt1(delta)}{' '}{unit}</span>
     </div>
   )
 }
 
-function VentilationCard({ Tin, RHin, Tout, RHout }) {
-  const a = ventilationAssessment(Tin, RHin, Tout, RHout)
-  const ahIn = absoluteHumidity(Tin, RHin)
-  const ahOut = absoluteHumidity(Tout, RHout)
-  const dpIn = dewPoint(Tin, RHin)
-  const dpOut = dewPoint(Tout, RHout)
+function VentTable({ Tin, RHin, Tout, RHout }) {
+  const a   = ventilationAssessment(Tin, RHin, Tout, RHout)
+  const dpI = dewPoint(Tin, RHin)
+  const dpO = dewPoint(Tout, RHout)
+  const ahI = absoluteHumidity(Tin, RHin)
+  const ahO = absoluteHumidity(Tout, RHout)
 
-  const dryBenefit  = a.deltaAH < -0.3
-  const dryConcern  = a.deltaAH >  0.3
-  const coolBenefit = a.deltaH  < -0.5
-  const warmConcern = a.deltaH  >  0.5
+  const v = ventVerdict(Tin, RHin, Tout, RHout)
 
-  let rec, recClass
-  if (a.condensationRisk) {
-    rec = `Nicht lüften – Kondensationsgefahr: Der Taupunkt der Aussenluft (${fmt1(dpOut)}°C) liegt über der Innentemperatur (${fmt1(Tin)}°C). Feuchte würde an kühlen Oberflächen kondensieren.`
-    recClass = 'bad'
-  } else if (dryBenefit && coolBenefit) {
-    rec = `Lüften empfohlen – Aussenluft ist trockener und enthält weniger Gesamtwärme. Beides verbessert das Raumklima.`
-    recClass = 'good'
-  } else if (dryBenefit && !warmConcern) {
-    rec = `Lüften sinnvoll für Feuchte – Aussenluft ist trockener (${fmt1(ahOut)} vs. ${fmt1(ahIn)} g/m³). Thermisch kein wesentlicher Unterschied.`
-    recClass = 'good'
-  } else if (dryBenefit && warmConcern) {
-    rec = `Abwägen – Aussenluft ist trockener, aber bringt mehr Wärme (Δh = +${fmt1(a.deltaH)} kJ/kg). Sinnvoll für Entfeuchtung, nicht zum Kühlen.`
-    recClass = 'warn'
-  } else if (coolBenefit && dryConcern) {
-    rec = `Abwägen – Aussenluft kühlt (Δh = ${fmt1(a.deltaH)} kJ/kg), ist aber feuchter (${fmt1(ahOut)} vs. ${fmt1(ahIn)} g/m³). Nur kurz lüften.`
-    recClass = 'warn'
-  } else if (!dryConcern && !warmConcern) {
-    rec = `Kein wesentlicher Unterschied in Feuchte und Wärme. Lüften hat kaum Effekt auf Raumklima (sinnvoll für CO₂ / Luftqualität).`
-    recClass = 'neutral'
-  } else {
-    rec = `Nicht lüften für Kühlung/Entfeuchtung – Aussenluft ist feuchter (${fmt1(ahOut)} vs. ${fmt1(ahIn)} g/m³) und wärmer (Δh = +${fmt1(a.deltaH)} kJ/kg).`
-    recClass = 'bad'
-  }
+  let detail
+  if (a.condensationRisk)
+    detail = `Taupunkt aussen (${fmt1(dpO)}°C) > Innentemp. (${fmt1(Tin)}°C) → Kondensat auf kühlen Oberflächen möglich.`
+  else if (a.deltaAH < -0.3 && a.deltaH < -0.5)
+    detail = `Aussenluft ist trockener (${fmt1(ahO)} vs. ${fmt1(ahI)} g/m³) und kühler (Δh = ${fmt1(a.deltaH)} kJ/kg).`
+  else if (a.deltaAH < -0.3)
+    detail = `Aussenluft trockener, aber ${a.deltaH > 0.5 ? 'wärmer' : 'thermisch ähnlich'} (Δh = ${fmt1(a.deltaH)} kJ/kg).`
+  else if (a.deltaH < -0.5)
+    detail = `Aussenluft kühler, aber feuchter (${fmt1(ahO)} vs. ${fmt1(ahI)} g/m³).`
+  else if (Math.abs(a.deltaAH) < 0.3 && Math.abs(a.deltaH) < 0.5)
+    detail = `Kein wesentlicher Unterschied. Lüften sinnvoll für CO₂ / Luftqualität.`
+  else
+    detail = `Aussenluft feuchter (${fmt1(ahO)} vs. ${fmt1(ahI)} g/m³) und wärmer (Δh = +${fmt1(a.deltaH)} kJ/kg).`
 
   return (
-    <div className="ventilation-card">
-      <div className="delta-table">
-        <div className="delta-header">
-          <span className="delta-metric"></span>
-          <span className="delta-in">Innen</span>
-          <span className="delta-arrow"></span>
-          <span className="delta-out">Aussen</span>
-          <span className="delta-badge">Δ</span>
-        </div>
-        <DeltaRow
-          label="Temperatur"
-          inVal={Tin} outVal={Tout} unit="°C"
-          lowerIsBetter={true}
-        />
-        <DeltaRow
-          label="Taupunkt"
-          inVal={dpIn} outVal={dpOut} unit="°C"
-          lowerIsBetter={true}
-        />
-        <DeltaRow
-          label="Abs. Feuchte"
-          inVal={ahIn} outVal={ahOut} unit="g/m³"
-          lowerIsBetter={true}
-        />
-        <DeltaRow
-          label="Enthalpie"
-          inVal={a.hIn} outVal={a.hOut} unit="kJ/kg"
-          lowerIsBetter={true}
-        />
+    <div className="vent-table">
+      <div className="d-head">
+        <span className="d-label"></span>
+        <span className="d-in">Innen</span>
+        <span className="d-arrow"></span>
+        <span className="d-out">Aussen</span>
+        <span className="d-delta">Δ</span>
       </div>
-      <div className={`rec-box ${recClass}`}>{rec}</div>
-      {a.condensationRisk && (
-        <p className="cond-note">
-          Taupunkt aussen {fmt1(dpOut)}°C &gt; Innentemperatur {fmt1(Tin)}°C
-        </p>
-      )}
+      <DeltaRow label="Temperatur" inVal={Tin}  outVal={Tout} unit="°C"    />
+      <DeltaRow label="Taupunkt"   inVal={dpI}  outVal={dpO}  unit="°C"
+        info="Taupunkt-Vergleich: Wenn aussen höher als innen, bringt Lüften mehr Feuchte herein."
+      />
+      <DeltaRow label="Abs. Feuchte" inVal={ahI} outVal={ahO} unit="g/m³"
+        info="Absoluter Wassergehalt. Primäres Signal fürs Lüften: Wenn aussen > innen, wird es feuchter."
+      />
+      <DeltaRow label="Enthalpie" inVal={a.hIn} outVal={a.hOut} unit="kJ/kg"
+        info="Spez. Enthalpie der Feuchtluft (fühlbare + latente Wärme). Wenn aussen < innen, reduziert Lüften die thermische Last."
+      />
+      <p className={`vent-detail ${v.cls}`}>{detail}</p>
     </div>
   )
 }
 
-// ─── geo / weather status pill ──────────────────────────────────────────────
+// ─── Geo status ───────────────────────────────────────────────────────────────
 
-const STATUS_LABEL = {
-  idle:     null,
-  loading:  '⟳ Standort wird ermittelt…',
-  locating: '⟳ Wetterdaten werden geladen…',
-  ok:       null,
-  denied:   'Standortzugriff verweigert – manuelle Eingabe',
-  error:    'Wetterdaten nicht verfügbar – manuelle Eingabe',
-}
-
-function GeoStatus({ status, location, onRefresh }) {
-  const label = STATUS_LABEL[status]
+function GeoBar({ status, location, onRefresh }) {
+  if (status === 'idle') return null
   return (
     <div className="geo-bar">
-      {status === 'ok' && location && (
-        <span className="geo-ok">
-          📍 {location.name ?? `${location.lat.toFixed(2)}, ${location.lon.toFixed(2)}`}
-          {' – Aktuelles Wetter'}
-        </span>
-      )}
-      {label && <span className={`geo-msg ${status}`}>{label}</span>}
+      {status === 'loading' || status === 'locating'
+        ? <span className="geo-msg loading">Standort wird ermittelt…</span>
+        : status === 'ok' && location
+          ? <span className="geo-ok">
+              📍{' '}{location.name ?? `${location.lat.toFixed(2)}, ${location.lon.toFixed(2)}`}
+            </span>
+          : <span className="geo-msg warn">Standort nicht verfügbar</span>
+      }
       {(status === 'ok' || status === 'denied' || status === 'error') && (
-        <button className="geo-refresh" onClick={onRefresh} title="Wetter neu laden">
-          ↺
-        </button>
+        <button className="geo-refresh" onClick={onRefresh} title="Neu laden">↺</button>
       )}
     </div>
   )
 }
 
-// ─── main app ───────────────────────────────────────────────────────────────
+// ─── App ──────────────────────────────────────────────────────────────────────
 
 export default function App() {
-  const [outTemp,  setOutTemp]  = useState(28)
-  const [outRH,    setOutRH]    = useState(65)
-  const [wind,     setWind]     = useState(12)
-  const [inTemp,   setInTemp]   = useState(24)
-  const [inRH,     setInRH]     = useState(55)
+  const [outTemp, setOutTemp] = useState(28)
+  const [outRH,   setOutRH]   = useState(65)
+  const [wind,    setWind]    = useState(12)
+  const [inTemp,  setInTemp]  = useState(24)
+  const [inRH,    setInRH]    = useState(55)
 
-  const [geoStatus,  setGeoStatus]  = useState('idle')
+  const [geoStatus,   setGeoStatus]   = useState('idle')
   const [geoLocation, setGeoLocation] = useState(null)
 
   async function loadWeather() {
-    if (!navigator.geolocation) {
-      setGeoStatus('denied')
-      return
-    }
+    if (!navigator.geolocation) { setGeoStatus('denied'); return }
     setGeoStatus('loading')
     navigator.geolocation.getCurrentPosition(
       async ({ coords }) => {
         setGeoStatus('locating')
         try {
           const w = await fetchCurrentWeather(coords.latitude, coords.longitude)
-          setOutTemp(w.temp)
-          setOutRH(w.humidity)
-          setWind(w.wind)
-          // Reverse-geocode with Open-Meteo's built-in location name isn't available,
-          // so we use the Nominatim API (OpenStreetMap, no key needed).
+          setOutTemp(w.temp); setOutRH(w.humidity); setWind(w.wind)
           let name = null
           try {
             const r = await fetch(
               `https://nominatim.openstreetmap.org/reverse?lat=${coords.latitude}&lon=${coords.longitude}&format=json`,
               { headers: { 'Accept-Language': 'de' } }
             )
-            const geo = await r.json()
-            name = geo.address?.city ?? geo.address?.town ?? geo.address?.village ?? geo.address?.county ?? null
-          } catch { /* name stays null, coordinates shown instead */ }
+            const g = await r.json()
+            name = g.address?.city ?? g.address?.town ?? g.address?.village ?? g.address?.county ?? null
+          } catch {}
           setGeoLocation({ lat: coords.latitude, lon: coords.longitude, name })
           setGeoStatus('ok')
-        } catch {
-          setGeoStatus('error')
-        }
+        } catch { setGeoStatus('error') }
       },
       () => setGeoStatus('denied')
     )
@@ -253,121 +253,85 @@ export default function App() {
 
   useEffect(() => { loadWeather() }, [])
 
-  const out = outdoorApparentTemp(outTemp, outRH, wind)
-  const inn = indoorApparentTemp(inTemp, inRH)
-  const dpOut = dewPoint(outTemp, outRH)
-  const dpIn  = dewPoint(inTemp, inRH)
-  const ahOut = absoluteHumidity(outTemp, outRH)
-  const ahIn  = absoluteHumidity(inTemp, inRH)
+  const outResult = outdoorApparentTemp(outTemp, outRH, wind)
+  const inResult  = indoorApparentTemp(inTemp, inRH)
+  const dpOut     = dewPoint(outTemp, outRH)
+  const dpIn      = dewPoint(inTemp, inRH)
+  const ahOut     = absoluteHumidity(outTemp, outRH)
+  const ahIn      = absoluteHumidity(inTemp, inRH)
+  const verdict   = ventVerdict(inTemp, inRH, outTemp, outRH)
 
   return (
     <div className="app">
       <header>
         <h1>Gefühlte Temperatur</h1>
-        <p className="subtitle">Hitzeindex · Windchill · Lüftungscheck</p>
-        <GeoStatus status={geoStatus} location={geoLocation} onRefresh={loadWeather} />
+        <GeoBar status={geoStatus} location={geoLocation} onRefresh={loadWeather} />
       </header>
 
       <main>
-        {/* ── Outside ── */}
-        <section className="section-pair">
-          <div className="panel card">
-            <h2>Aussen</h2>
-            <Slider label="Temperatur" value={outTemp} onChange={setOutTemp}
-              min={-30} max={50} step={0.5} unit="°C" />
-            <Slider label="Rel. Luftfeuchtigkeit" value={outRH} onChange={setOutRH}
-              min={0} max={100} step={1} unit="%"
-              note={outTemp < 27 && outTemp > 10
-                ? 'Hitzeindex greift erst ab 27 °C.'
-                : undefined} />
-            <Slider label="Windgeschwindigkeit" value={wind} onChange={setWind}
-              min={0} max={120} step={1} unit="km/h"
-              note={outTemp > 10
-                ? 'Windchill greift unter 10 °C.'
-                : wind < 4.8 ? 'Windchill greift ab 4.8 km/h.'
-                : undefined} />
+        {/* ── Aussen collapsible ── */}
+        <details className="section-card">
+          <summary className="section-summary">
+            <span className="section-name">
+              Aussen
+              {geoStatus === 'ok' && <span className="live-dot" title="Live-Wetter">●</span>}
+            </span>
+            <span className="summary-chips">
+              <Chip>{outTemp}{' '}°C</Chip>
+              <Chip>{outRH}{' '}%</Chip>
+              <Chip>{wind}{' '}km/h</Chip>
+            </span>
+          </summary>
+          <div className="section-body">
+            <Slider label="Temperatur"       value={outTemp} onChange={setOutTemp} min={-30} max={50}  step={0.5} unit="°C" />
+            <Slider label="Luftfeuchtigkeit" value={outRH}   onChange={setOutRH}   min={0}   max={100} step={1}   unit="%" />
+            <Slider label="Wind"             value={wind}    onChange={setWind}    min={0}   max={120} step={1}   unit="km/h" />
           </div>
+        </details>
 
-          {/* ── Inside ── */}
-          <div className="panel card">
-            <h2>Innen</h2>
-            <Slider label="Temperatur" value={inTemp} onChange={setInTemp}
-              min={10} max={40} step={0.5} unit="°C" />
-            <Slider label="Rel. Luftfeuchtigkeit" value={inRH} onChange={setInRH}
-              min={0} max={100} step={1} unit="%" />
-            <div className="indoor-spacer" />
+        {/* ── Innen collapsible ── */}
+        <details className="section-card">
+          <summary className="section-summary">
+            <span className="section-name">Innen</span>
+            <span className="summary-chips">
+              <Chip>{inTemp}{' '}°C</Chip>
+              <Chip>{inRH}{' '}%</Chip>
+            </span>
+          </summary>
+          <div className="section-body">
+            <Slider label="Temperatur"       value={inTemp} onChange={setInTemp} min={10} max={40}  step={0.5} unit="°C" />
+            <Slider label="Luftfeuchtigkeit" value={inRH}   onChange={setInRH}   min={0}  max={100} step={1}   unit="%" />
           </div>
+        </details>
+
+        {/* ── Felt temps ── */}
+        <section className="ap-row">
+          <ApparentCard side="Aussen" airTemp={outTemp} result={outResult} dp={dpOut} ah={ahOut} />
+          <ApparentCard side="Innen"  airTemp={inTemp}  result={inResult}  dp={dpIn}  ah={ahIn} />
         </section>
 
-        {/* ── Apparent temps ── */}
-        <section className="section-pair results">
-          <ApparentTempCard
-            label="Gefühlte Temp. Aussen"
-            airTemp={outTemp}
-            apparentTemp={out.value}
-            formula={out.formula}
-            dp={dpOut}
-            ah={ahOut}
-          />
-          <ApparentTempCard
-            label="Gefühlte Temp. Innen"
-            airTemp={inTemp}
-            apparentTemp={inn.value}
-            formula={inn.formula}
-            dp={dpIn}
-            ah={ahIn}
-          />
-        </section>
+        {/* ── Lüften collapsible ── */}
+        <details className="section-card">
+          <summary className="section-summary">
+            <span className="section-name">Lüften</span>
+            <span className={`verdict-chip ${verdict.cls}`}>{verdict.short}</span>
+          </summary>
+          <div className="section-body">
+            <VentTable Tin={inTemp} RHin={inRH} Tout={outTemp} RHout={outRH} />
+          </div>
+        </details>
 
-        {/* ── Ventilation ── */}
-        <section className="card">
-          <h2>Lüftungscheck</h2>
-          <VentilationCard Tin={inTemp} RHin={inRH} Tout={outTemp} RHout={outRH} />
-        </section>
-
-        {/* ── Formula details ── */}
-        <details className="card formula-details">
-          <summary>Formeln & Methodik</summary>
-          <div className="formula-content">
-            <h4>Hitzeindex (Rothfusz/Steadman)</h4>
-            <p>
-              Zweistufig nach NWS: Erst einfache Steadman-Formel – greift die
-              berechnete mittlere Wärmebelastung über 80 °F, wird das
-              Rothfusz-Polynom (9 Terme) angewendet. Korrigiert für sehr niedrige
-              (&lt;13 %) und sehr hohe (&gt;85 %) Luftfeuchte. Kein
-              Hitzeindex-Effekt bei tiefer Feuchte, auch wenn T ≥ 27 °C.
-            </p>
-            <h4>Windchill (Environment Canada / NWS, 2001)</h4>
-            <p>
-              <code>13.12 + 0.6215·T − 11.37·v^0.16 + 0.3965·T·v^0.16</code>
-              <br />Kalibriert für Gesicht auf 1,5 m Höhe, Gehgeschwindigkeit 1,34 m/s.
-              Gültig für T ≤ 10 °C und v ≥ 4,8 km/h.
-            </p>
-            <h4>Taupunkt & absolute Feuchte (Magnus-Tetens)</h4>
-            <p>
-              Sättigungsdampfdruck: <code>e_s = 6,1078·exp(17,625·T/(243,04+T))</code>
-              (Alduchov & Eskridge 1996). Taupunkt durch Invertierung. Absolute
-              Feuchte aus dem idealen Gasgesetz: <code>ρ_w = 216,7·e/(T_K)</code>.
-            </p>
-            <h4>Spezifische Enthalpie der Feuchtluft (Psychrometrie)</h4>
-            <p>
-              <code>h = 1,006·T + W·(2501 + 1,86·T)</code> [kJ/kg Trockenluft]
-              <br />W = Mischungsverhältnis (kg Wasser/kg Trockenluft). Kombiniert
-              fühlbare Wärme und latente Wärme. Relevant fürs Lüften: Wenn
-              h_aussen &lt; h_innen, bringt Aussenluft weniger Gesamtwärme –
-              unabhängig davon, ob Abkühlung oder Entfeuchtung dominiert.
-            </p>
-            <h4>Kondensationsrisiko</h4>
-            <p>
-              Wenn Taupunkt der Aussenluft über der Innentemperatur liegt, kann
-              Feuchte an kühlen Oberflächen (Wände, Fensterrahmen) kondensieren
-              – Schimmelgefahr.
-            </p>
-            <p className="disclaimer-small">
-              Ohne direkte Sonnenstrahlung (kann +8–15 °C hinzufügen),
-              Körperaktivität und Bekleidung (CLO-Wert). Für Innenräume kein
-              Windchill, da vernachlässigbarer Luftzug.
-            </p>
+        {/* ── Formulas ── */}
+        <details className="section-card formula-card">
+          <summary className="section-summary">
+            <span className="section-name muted">Formeln & Methodik</span>
+          </summary>
+          <div className="section-body formula-body">
+            <p><strong>Hitzeindex</strong> – NWS/Rothfusz (1990). Zweistufig: einfache Steadman-Formel zuerst; Polynom (9 Terme) nur wenn mittlere Wärmebelastung ≥ 80°F. Korrekturen für RH &lt;13 % und &gt;85 %.</p>
+            <p><strong>Windchill</strong> – Environment Canada / NWS (2001). <code>13.12 + 0.6215T − 11.37v^0.16 + 0.3965T·v^0.16</code>. Gültig T ≤ 10°C, v ≥ 4.8 km/h.</p>
+            <p><strong>Magnus-Tetens</strong> (Alduchov & Eskridge 1996): <code>e_s = 6.1078·exp(17.625T / (243.04+T))</code>. Taupunkt durch Invertierung. Abs. Feuchte: <code>ρ_w = 216.7·e / T_K</code>.</p>
+            <p><strong>Enthalpie</strong> (Psychrometrie): <code>h = 1.006T + W·(2501 + 1.86T)</code> kJ/kg. W = Mischungsverhältnis. Kombiniert fühlbare + latente Wärme.</p>
+            <p className="muted">Ohne Sonnenstrahlung (+8–15°C möglich), Körperaktivität und CLO-Wert.</p>
           </div>
         </details>
       </main>
