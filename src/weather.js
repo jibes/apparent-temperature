@@ -19,6 +19,32 @@ export async function fetchCurrentWeather(lat, lon) {
   }
 }
 
+// Fetches the next `hours` of hourly forecast from Open-Meteo.
+// Returns an array of { time: Date, temp, humidity, wind, solar }.
+export async function fetchHourlyForecast(lat, lon, hours = 24) {
+  const url =
+    `https://api.open-meteo.com/v1/forecast` +
+    `?latitude=${lat}&longitude=${lon}` +
+    `&hourly=temperature_2m,relative_humidity_2m,wind_speed_10m,shortwave_radiation` +
+    `&wind_speed_unit=kmh&timezone=auto&forecast_days=2`
+
+  const res = await fetch(url)
+  if (!res.ok) throw new Error(`Open-Meteo ${res.status}`)
+  const data = await res.json()
+  const h = data.hourly
+  const all = h.time.map((t, i) => ({
+    time:     new Date(t),
+    temp:     h.temperature_2m[i],
+    humidity: h.relative_humidity_2m[i],
+    wind:     h.wind_speed_10m[i],
+    solar:    h.shortwave_radiation[i] ?? 0,
+  }))
+  // Start from the current hour (drop past entries), then take `hours`.
+  const now = Date.now()
+  const startIdx = Math.max(0, all.findIndex(e => e.time.getTime() + 3600000 > now))
+  return all.slice(startIdx, startIdx + hours)
+}
+
 // Forward geocoding via Nominatim (OpenStreetMap, no key required).
 // Returns { lat, lon, name } for the best match, or null if none found.
 export async function searchLocation(query) {

@@ -501,6 +501,54 @@ input[type='range'] {
 }
 .felt-meta span { display: inline-flex; align-items: center; }
 
+/* ── 24h forecast strip ── */
+.forecast {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  padding: 0.75rem 0.4rem 0.6rem 0.8rem;
+  margin-bottom: 0.6rem;
+}
+.forecast-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  padding-right: 0.4rem;
+  margin-bottom: 0.5rem;
+}
+.forecast-sub { font-size: 0.68rem; color: var(--muted); }
+.forecast-strip {
+  display: flex;
+  gap: 0.55rem;
+  overflow-x: auto;
+  padding-bottom: 0.3rem;
+  scrollbar-width: thin;
+}
+.fc-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.25rem;
+  flex: 0 0 auto;
+  min-width: 1.6rem;
+}
+.fc-temp {
+  font-size: 0.7rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.fc-bar {
+  width: 0.55rem;
+  border-radius: 999px;
+  display: block;
+}
+.fc-hour {
+  font-size: 0.62rem;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
 /* temp colour themes */
 .very-hot    { background: #4a0a0a; color: #fca5a5; border-color: #7f1d1d; }
 .hot         { background: #431407; color: #fdba74; border-color: #7c2d12; }

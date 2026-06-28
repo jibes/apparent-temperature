@@ -5,7 +5,7 @@ import {
   dewPoint,
   absoluteHumidity,
 } from './formulas.js'
-import { fetchCurrentWeather, searchLocation } from './weather.js'
+import { fetchCurrentWeather, fetchHourlyForecast, searchLocation } from './weather.js'
 import './App.css'
 
 // helpers
@@ -343,6 +343,44 @@ function GeoBar({ status, location, onRefresh, onSearch, onLocate }) {
 
 // Felt-temperature tab (outdoor: temp + humidity + wind + sun)
 
+// 24-hour felt-temperature strip
+
+function ForecastStrip({ hours, met, clo }) {
+  if (!hours || hours.length === 0) return null
+
+  const felts = hours.map(h =>
+    comfortAdjust(utci(h.temp, h.humidity, h.wind, meanRadiantTemp(h.temp, h.solar)), met, clo)
+  )
+  const min = Math.min(...felts)
+  const max = Math.max(...felts)
+  const span = Math.max(1, max - min)
+
+  return (
+    <div className="forecast">
+      <div className="forecast-head">
+        <span className="section-name muted">24-Stunden-Verlauf</span>
+        <span className="forecast-sub">gefühlt, in der Sonne</span>
+      </div>
+      <div className="forecast-strip">
+        {hours.map((h, i) => {
+          const felt = felts[i]
+          const hour = h.time.getHours()
+          const barH = 6 + Math.round(((felt - min) / span) * 34) // 6–40 px
+          return (
+            <div className="fc-col" key={i}>
+              <span className="fc-temp">{Math.round(felt)}°</span>
+              <span className={`fc-bar ${colorClass(felt)}`} style={{ height: `${barH}px` }} />
+              <span className="fc-hour">
+                {h.solar > 10 ? '' : '🌙'}{String(hour).padStart(2, '0')}
+              </span>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
 function FeltCard({ side, icon, feltTemp, airTemp }) {
   const cat  = utciCategory(feltTemp)
   const cls  = colorClass(feltTemp)
@@ -362,7 +400,7 @@ function FeltCard({ side, icon, feltTemp, airTemp }) {
 function FeltTab({
   outTemp, setOutTemp, outRH, setOutRH, wind, setWind, solar, setSolar,
   met, setMet, clo, setClo,
-  geoStatus, lat, lon,
+  hours, geoStatus, lat, lon,
 }) {
   const clearSky  = clearSkyMax(lat, lon)
   const Tr        = meanRadiantTemp(outTemp, solar)
@@ -438,6 +476,8 @@ function FeltTab({
           <Info>Taupunkt und absolute Feuchte der Aussenluft.</Info>
         </span>
       </div>
+
+      <ForecastStrip hours={hours} met={met} clo={clo} />
 
       <details className="section-card formula-card">
         <summary className="section-summary">
@@ -525,6 +565,7 @@ export default function App() {
 
   const [geoStatus,   setGeoStatus]   = useState('idle')
   const [geoLocation, setGeoLocation] = useState(null)
+  const [hours,       setHours]       = useState(null)
 
   // Apply fetched weather to outdoor inputs; prefill indoor temp once on first
   // load so the Lüften tab starts from a sensible baseline (= outdoor temp).
@@ -546,6 +587,7 @@ export default function App() {
         try {
           const w = await fetchCurrentWeather(coords.latitude, coords.longitude)
           applyWeather(w)
+          fetchHourlyForecast(coords.latitude, coords.longitude).then(setHours).catch(() => {})
           let name = null
           try {
             const r = await fetch(
@@ -570,6 +612,7 @@ export default function App() {
       if (!loc) { setGeoStatus('notfound'); return }
       const w = await fetchCurrentWeather(loc.lat, loc.lon)
       applyWeather(w)
+      fetchHourlyForecast(loc.lat, loc.lon).then(setHours).catch(() => {})
       setGeoLocation(loc)
       setGeoStatus('ok')
     } catch { setGeoStatus('error') }
@@ -610,6 +653,7 @@ export default function App() {
               solar={solar}     setSolar={setSolar}
               met={met}         setMet={setMet}
               clo={clo}         setClo={setClo}
+              hours={hours}
               geoStatus={geoStatus}
               lat={geoLocation?.lat ?? 50}
               lon={geoLocation?.lon ?? 10}
