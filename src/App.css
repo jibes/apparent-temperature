@@ -460,8 +460,17 @@ input[type='range'] {
   font-size: 0.74rem;
   line-height: 1.5;
   color: var(--muted);
-  text-align: center;
-  margin: -0.1rem 0.3rem 0.6rem;
+  margin: 0.6rem 0 0.7rem;
+}
+
+/* Details collapsible: physical data sits flush inside the body */
+.section-body .felt-meta {
+  background: none;
+  border: none;
+  border-radius: 0;
+  padding: 0;
+  margin: 0;
+  justify-content: flex-start;
 }
 
 /* ── Forecast chart ── */

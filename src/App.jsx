@@ -496,28 +496,39 @@ function FeltTab({
         <FeltCard side="Sonne"    icon="☀️" feltTemp={feltSun}   airTemp={outTemp} />
       </section>
 
-      <p className="felt-range-note">
-        Spanne zwischen vollem Schatten und voller Sonne. Wie warm es sich wirklich anfühlt,
-        liegt je nach Bewölkung und Standort dazwischen.
-      </p>
-
-      <div className="felt-meta">
-        <span>Lufttemp. {fmt1(outTemp)}°C</span>
-        <span>
-          Strahlungstemp. Sonne {fmt1(TrSun)}°C
-          <Info>Mittlere Strahlungstemperatur bei klarem Himmel (Sonnenstand jetzt). Im Schatten ≈ Lufttemperatur.</Info>
-        </span>
-        <span>
-          Taupunkt {fmt1(dp)}°C · {fmt1(ah)} g/m³
-          <Info>Taupunkt und absolute Feuchte der Aussenluft.</Info>
-        </span>
-        {wxMeta && wxMeta.sources > 1 && (
-          <span>
-            {wxMeta.sources} Modelle · ±{fmt1(wxMeta.spread.temp / 2)}°C
-            <Info>Konsens aus {wxMeta.sources} Wettermodellen (Median je Größe). Die Spanne zeigt die Unsicherheit – je grösser, desto unsicherer die Vorhersage.</Info>
+      <details className="section-card">
+        <summary className="section-summary">
+          <span className="section-name">Details</span>
+          <span className="summary-chips">
+            <Chip>Luft {fmt1(outTemp)}°C</Chip>
+            <Chip>Tp {fmt1(dp)}°C</Chip>
+            {wxMeta && wxMeta.sources > 1 && <Chip>{wxMeta.sources} Mod.</Chip>}
           </span>
-        )}
-      </div>
+        </summary>
+        <div className="section-body">
+          <p className="felt-range-note">
+            Spanne zwischen vollem Schatten und voller Sonne. Wie warm es sich wirklich anfühlt,
+            liegt je nach Bewölkung und Standort dazwischen.
+          </p>
+          <div className="felt-meta">
+            <span>Lufttemp. {fmt1(outTemp)}°C</span>
+            <span>
+              Strahlungstemp. Sonne {fmt1(TrSun)}°C
+              <Info>Mittlere Strahlungstemperatur bei klarem Himmel (Sonnenstand jetzt). Im Schatten ≈ Lufttemperatur.</Info>
+            </span>
+            <span>
+              Taupunkt {fmt1(dp)}°C · {fmt1(ah)} g/m³
+              <Info>Taupunkt und absolute Feuchte der Aussenluft.</Info>
+            </span>
+            {wxMeta && wxMeta.sources > 1 && (
+              <span>
+                {wxMeta.sources} Modelle · ±{fmt1(wxMeta.spread.temp / 2)}°C
+                <Info>Konsens aus {wxMeta.sources} Wettermodellen (Median je Größe). Die Spanne zeigt die Unsicherheit – je grösser, desto unsicherer die Vorhersage.</Info>
+              </span>
+            )}
+          </div>
+        </div>
+      </details>
 
       <ForecastChart hours={hours} />
 
