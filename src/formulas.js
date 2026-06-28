@@ -1,10 +1,14 @@
-// Magnus-Tetens constants (Alduchov & Eskridge 1996) — valid −45°C to +60°C
+// Magnus form, AERK coefficients (Alduchov & Eskridge 1996, eq. 21) —
+// max relative error <0.4% over −40…+50°C. The matched constant for this
+// (MA, MB) pair is C0 = 6.1094 hPa; the older Tetens value 6.1078 belongs
+// to the (17.27, 237.3) pair and is inconsistent here.
 const MA = 17.625
 const MB = 243.04 // °C
+const C0 = 6.1094 // hPa, saturation pressure at 0°C
 
 // Saturation vapor pressure [hPa]
 export function saturationPressure(T) {
-  return 6.1078 * Math.exp((MA * T) / (MB + T))
+  return C0 * Math.exp((MA * T) / (MB + T))
 }
 
 // Actual vapor pressure [hPa]
@@ -12,9 +16,10 @@ export function vaporPressure(T, RH) {
   return (RH / 100) * saturationPressure(T)
 }
 
-// Dew point [°C] — inverse Magnus
+// Dew point [°C] — inverse Magnus. Independent of C0 (it cancels), so the
+// result depends only on the (MA, MB) pair.
 export function dewPoint(T, RH) {
-  const lnE = Math.log(vaporPressure(T, RH) / 6.1078)
+  const lnE = Math.log(vaporPressure(T, RH) / C0)
   return (MB * lnE) / (MA - lnE)
 }
 

@@ -12,8 +12,11 @@ describe('humidity formulas', () => {
   it('saturation pressure at 20°C ≈ 23.3 hPa', () => {
     expect(saturationPressure(20)).toBeCloseTo(23.3, 0)
   })
-  it('saturation pressure at 0°C ≈ 6.11 hPa', () => {
-    expect(saturationPressure(0)).toBeCloseTo(6.108, 2)
+  it('saturation pressure at 0°C = AERK constant 6.1094 hPa', () => {
+    expect(saturationPressure(0)).toBeCloseTo(6.1094, 4)
+  })
+  it('saturation pressure at 30°C ≈ 42.4 hPa (WMO ref ~42.43)', () => {
+    expect(saturationPressure(30)).toBeCloseTo(42.4, 0)
   })
   it('vapor pressure scales linearly with RH', () => {
     expect(vaporPressure(20, 50)).toBeCloseTo(saturationPressure(20) * 0.5, 6)
