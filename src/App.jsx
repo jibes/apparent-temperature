@@ -603,6 +603,7 @@ export default function App() {
 
   const [geoStatus,   setGeoStatus]   = useState('idle')
   const [geoLocation, setGeoLocation] = usePersistentState('geoLocation', null)
+  const [locSource,   setLocSource]   = usePersistentState('locSource', 'gps') // 'gps' | 'search'
   const [hours,       setHours]       = useState(null)
   const [wxMeta,      setWxMeta]      = useState(null) // { sources, spread }
 
@@ -638,6 +639,7 @@ export default function App() {
             name = g.address?.city ?? g.address?.town ?? g.address?.village ?? g.address?.county ?? null
           } catch {}
           setGeoLocation({ lat: coords.latitude, lon: coords.longitude, name })
+          setLocSource('gps')
           setGeoStatus('ok')
         } catch { setGeoStatus('error') }
       },
@@ -666,8 +668,19 @@ export default function App() {
       applyWeather(w)
       fetchHourlyForecast(loc.lat, loc.lon).then(setHours).catch(() => {})
       setGeoLocation(loc)
+      setLocSource('search')
       setGeoStatus('ok')
     } catch { setGeoStatus('error') }
+  }
+
+  // Reload button: re-acquire GPS when in GPS mode; for a searched location
+  // just refetch its data without switching back to the device position.
+  function refresh() {
+    if (locSource === 'search' && geoLocation?.lat != null) {
+      refetchFor(geoLocation.lat, geoLocation.lon, geoLocation.name)
+    } else {
+      loadWeather()
+    }
   }
 
   // On mount: if we have a saved location, refresh its weather silently
@@ -688,7 +701,7 @@ export default function App() {
         <GeoBar
           status={geoStatus}
           location={geoLocation}
-          onRefresh={loadWeather}
+          onRefresh={refresh}
           onSearch={searchWeather}
           onLocate={loadWeather}
         />
