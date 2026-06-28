@@ -1,18 +1,54 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <rect width="512" height="512" rx="96" fill="#0d0f18"/>
-  <circle cx="356" cy="156" r="64" fill="#fbbf24"/>
-  <g stroke="#fbbf24" stroke-width="16" stroke-linecap="round">
-    <line x1="356" y1="56" x2="356" y2="20"/>
-    <line x1="356" y1="292" x2="356" y2="256"/>
-    <line x1="256" y1="156" x2="220" y2="156"/>
-    <line x1="492" y1="156" x2="456" y2="156"/>
-    <line x1="285" y1="85" x2="260" y2="60"/>
-    <line x1="452" y1="252" x2="427" y2="227"/>
-    <line x1="285" y1="227" x2="260" y2="252"/>
-    <line x1="452" y1="60" x2="427" y2="85"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Gefühlte Temperatur">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#222748"/>
+      <stop offset="0.55" stop-color="#12152a"/>
+      <stop offset="1" stop-color="#0a0c16"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.74" cy="0.26" r="0.5">
+      <stop offset="0" stop-color="#fbbf24" stop-opacity="0.45"/>
+      <stop offset="1" stop-color="#fbbf24" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="sun" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#fde68a"/>
+      <stop offset="0.55" stop-color="#fbbf24"/>
+      <stop offset="1" stop-color="#f59e0b"/>
+    </linearGradient>
+    <linearGradient id="merc" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#fb923c"/>
+      <stop offset="1" stop-color="#ef4444"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="512" height="512" rx="112" fill="url(#bg)"/>
+  <rect width="512" height="512" rx="112" fill="url(#glow)"/>
+
+  <!-- sun -->
+  <g stroke="url(#sun)" stroke-width="20" stroke-linecap="round">
+    <line x1="366" y1="78"  x2="366" y2="44"/>
+    <line x1="366" y1="246" x2="366" y2="228"/>
+    <line x1="282" y1="162" x2="258" y2="162"/>
+    <line x1="474" y1="162" x2="450" y2="162"/>
+    <line x1="306" y1="102" x2="289" y2="85"/>
+    <line x1="443" y1="239" x2="426" y2="222"/>
+    <line x1="306" y1="222" x2="289" y2="239"/>
+    <line x1="443" y1="85"  x2="426" y2="102"/>
   </g>
-  <path d="M168 96 a44 44 0 0 1 44 44 v176 a72 72 0 1 1 -88 0 v-176 a44 44 0 0 1 44 -44 z"
-        fill="#161929" stroke="#818cf8" stroke-width="16"/>
-  <circle cx="168" cy="372" r="40" fill="#f87171"/>
-  <rect x="160" y="180" width="16" height="170" rx="8" fill="#f87171"/>
+  <circle cx="366" cy="162" r="56" fill="url(#sun)"/>
+
+  <!-- thermometer -->
+  <path d="M168 92
+           a48 48 0 0 1 48 48
+           v168
+           a76 76 0 1 1 -96 0
+           v-168
+           a48 48 0 0 1 48 -48 z"
+        fill="#0d0f18" stroke="#e6e9f5" stroke-width="20"/>
+  <circle cx="168" cy="372" r="46" fill="url(#merc)"/>
+  <rect x="156" y="196" width="24" height="172" rx="12" fill="url(#merc)"/>
+  <g stroke="#e6e9f5" stroke-width="10" stroke-linecap="round" opacity="0.85">
+    <line x1="206" y1="172" x2="226" y2="172"/>
+    <line x1="206" y1="212" x2="226" y2="212"/>
+    <line x1="206" y1="252" x2="226" y2="252"/>
+  </g>
 </svg>
