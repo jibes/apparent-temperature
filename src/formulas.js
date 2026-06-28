@@ -113,6 +113,21 @@ export function meanRadiantTemp(Ta, solar) {
   return Ta + 0.025 * Math.max(0, solar)
 }
 
+// Peak clear-sky global irradiance [W/m²] at solar noon for a given latitude
+// and date — the strongest the sun can get that day. Captures the seasonal
+// effect: a low winter sun yields far less radiation than a high summer sun.
+//   declination: Cooper (1969); clear-sky GHI: Haurwitz model.
+export function clearSkyMax(lat, date = new Date()) {
+  const start = new Date(date.getFullYear(), 0, 0)
+  const N = Math.floor((date - start) / 86400000)          // day of year
+  const decl = 23.45 * Math.sin((2 * Math.PI * (284 + N)) / 365) // °
+  const elev = 90 - Math.abs(lat - decl)                   // solar elevation at noon
+  if (elev <= 0) return 0
+  const cosZ = Math.cos(((90 - elev) * Math.PI) / 180)     // cos(zenith)
+  if (cosZ <= 0) return 0
+  return Math.max(0, 1098 * cosZ * Math.exp(-0.057 / cosZ))
+}
+
 export function utci(Ta, RH, va_kmh, Tr = null) {
   const vel = Math.max(0.5, Math.min(17, va_kmh / 3.6)) // km/h → m/s, clamp
   const d_tr = (Tr ?? Ta) - Ta                          // radiant offset [°C]

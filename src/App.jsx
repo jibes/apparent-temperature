@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import {
-  utci, utciCategory, meanRadiantTemp,
+  utci, utciCategory, meanRadiantTemp, clearSkyMax,
   ventilationAssessment,
   dewPoint,
   absoluteHumidity,
@@ -22,19 +22,38 @@ function colorClass(t) {
   return 'very-cold'
 }
 
-// Sun presets — intuitive levels mapped to representative global radiation
-// [W/m²]. The API value (or any number) snaps to the nearest level.
+// Sun presets — intuitive sky conditions as a fraction of the day's peak
+// clear-sky irradiance, so each level scales with season & latitude.
 const SUN_LEVELS = [
-  { val: 0,   icon: '🌙', label: 'Schatten' },
-  { val: 150, icon: '☁️', label: 'Bedeckt' },
-  { val: 400, icon: '⛅', label: 'Wechselhaft' },
-  { val: 700, icon: '🌤️', label: 'Sonnig' },
-  { val: 950, icon: '☀️', label: 'Pralle Sonne' },
+  { frac: 0,    icon: '🌙', label: 'Schatten' },
+  { frac: 0.2,  icon: '☁️', label: 'Bedeckt' },
+  { frac: 0.5,  icon: '⛅', label: 'Wechselhaft' },
+  { frac: 0.85, icon: '🌤️', label: 'Sonnig' },
+  { frac: 1.0,  icon: '☀️', label: 'Pralle Sonne' },
 ]
 
-function nearestSunLevel(s) {
-  return SUN_LEVELS.reduce((best, lvl) =>
-    Math.abs(lvl.val - s) < Math.abs(best.val - s) ? lvl : best
+function sunLevelValues(clearSky) {
+  return SUN_LEVELS.map(l => ({ ...l, val: Math.round(l.frac * clearSky) }))
+}
+
+function nearestSunLevel(solar, clearSky) {
+  return sunLevelValues(clearSky).reduce((best, lvl) =>
+    Math.abs(lvl.val - solar) < Math.abs(best.val - solar) ? lvl : best
+  )
+}
+
+// Wind presets (Beaufort-ish), used alongside the slider.
+const WIND_LEVELS = [
+  { val: 0,  label: 'Windstill' },
+  { val: 8,  label: 'Brise' },
+  { val: 20, label: 'Mäßig' },
+  { val: 35, label: 'Frisch' },
+  { val: 60, label: 'Stürmisch' },
+]
+
+function nearestPreset(levels, v) {
+  return levels.reduce((best, lvl) =>
+    Math.abs(lvl.val - v) < Math.abs(best.val - v) ? lvl : best
   )
 }
 
@@ -84,33 +103,67 @@ function Slider({ label, value, onChange, min, max, step, unit, sublabel }) {
   )
 }
 
-// Sun selector — segmented icon buttons
+// Preset chip row (used for wind) — quick presets above/below a slider.
 
-function SunSelect({ value, onChange }) {
-  const active = nearestSunLevel(value)
+function PresetRow({ levels, value, onChange, unit }) {
+  const active = nearestPreset(levels, value)
+  return (
+    <div className="preset-row">
+      {levels.map(lvl => (
+        <button
+          key={lvl.val}
+          type="button"
+          className={`preset-btn ${lvl.val === active.val ? 'active' : ''}`}
+          onClick={() => onChange(lvl.val)}
+        >
+          {lvl.label}
+        </button>
+      ))}
+    </div>
+  )
+}
+
+// Sun selector — icon presets (season-scaled) + fine-tune slider.
+
+function SunSelect({ value, onChange, clearSky }) {
+  const levels = sunLevelValues(clearSky)
+  const active = nearestSunLevel(value, clearSky)
+  const inputRef = useRef()
   return (
     <div className="slider-group">
       <div className="slider-header">
         <span className="slider-label">
           Sonne
-          <Info>Wie stark trifft die Sonne dich? Direkte Sonne heizt den Körper über die Lufttemperatur hinaus auf; im Schatten zählt nur die Luft.</Info>
+          <Info>Wie stark trifft die Sonne dich? Direkte Sonne heizt den Körper über die Lufttemperatur hinaus auf; im Schatten zählt nur die Luft. Die Stufen sind an Jahreszeit und Breitengrad angepasst (heutiges Klarhimmel-Maximum: {Math.round(clearSky)} W/m²).</Info>
         </span>
-        <span className="value-badge">{active.label}</span>
+        <span className="value-badge">{active.label} · {value} W/m²</span>
       </div>
       <div className="sun-select">
-        {SUN_LEVELS.map(lvl => (
+        {levels.map(lvl => (
           <button
-            key={lvl.val}
+            key={lvl.label}
             type="button"
             className={`sun-btn ${lvl.val === active.val ? 'active' : ''}`}
             onClick={() => onChange(lvl.val)}
-            title={lvl.label}
+            title={`${lvl.label} (~${lvl.val} W/m²)`}
             aria-label={lvl.label}
           >
             <span className="sun-icon">{lvl.icon}</span>
             <span className="sun-cap">{lvl.label}</span>
           </button>
         ))}
+      </div>
+      <input
+        ref={inputRef}
+        type="range"
+        min={0} max={1000} step={10} value={value}
+        onChange={e => onChange(Number(e.target.value))}
+        onPointerDown={e => e.currentTarget.setPointerCapture(e.pointerId)}
+        style={{ touchAction: 'pan-y' }}
+      />
+      <div className="slider-ends">
+        <span>0 W/m²</span>
+        <span>1000 W/m²</span>
       </div>
     </div>
   )
@@ -278,19 +331,32 @@ function GeoBar({ status, location, onRefresh, onSearch, onLocate }) {
 
 // Felt-temperature tab (outdoor: temp + humidity + wind + sun)
 
+function FeltCard({ side, icon, feltTemp, airTemp }) {
+  const cat  = utciCategory(feltTemp)
+  const cls  = colorClass(feltTemp)
+  const diff = feltTemp - airTemp
+  return (
+    <div className={`felt-card ${cls}`}>
+      <div className="felt-head">{icon} {side}</div>
+      <div className="ap-val">{fmt1(feltTemp)}{' '}°C</div>
+      <div className="ap-cat">{cat.label}</div>
+      <div className="ap-formula">
+        <span className="ap-diff">{diff >= 0 ? '+' : ''}{fmt1(diff)}°C vs. Luft</span>
+      </div>
+    </div>
+  )
+}
+
 function FeltTab({
   outTemp, setOutTemp, outRH, setOutRH, wind, setWind, solar, setSolar,
-  geoStatus,
+  geoStatus, lat,
 }) {
+  const clearSky  = clearSkyMax(lat)
   const Tr        = meanRadiantTemp(outTemp, solar)
   const feltSun   = utci(outTemp, outRH, wind, Tr)
   const feltShade = utci(outTemp, outRH, wind, outTemp)
-  const cat       = utciCategory(feltSun)
-  const cls       = colorClass(feltSun)
-  const diff      = feltSun - outTemp
   const dp        = dewPoint(outTemp, outRH)
   const ah        = absoluteHumidity(outTemp, outRH)
-  const sunBoost  = feltSun - feltShade
 
   return (
     <>
@@ -304,42 +370,35 @@ function FeltTab({
             <Chip>{outTemp}{' '}°C</Chip>
             <Chip>{outRH}{' '}%</Chip>
             <Chip>{wind}{' '}km/h</Chip>
-            <Chip>{nearestSunLevel(solar).icon}</Chip>
+            <Chip>{nearestSunLevel(solar, clearSky).icon}</Chip>
           </span>
         </summary>
         <div className="section-body">
           <Slider label="Temperatur"       value={outTemp} onChange={setOutTemp} min={-30} max={50}   step={0.5} unit="°C" />
           <Slider label="Luftfeuchtigkeit" value={outRH}   onChange={setOutRH}   min={0}   max={100}  step={1}   unit="%" />
           <Slider label="Wind"             value={wind}    onChange={setWind}    min={0}   max={120}  step={1}   unit="km/h" />
-          <SunSelect value={solar} onChange={setSolar} />
+          <PresetRow levels={WIND_LEVELS} value={wind} onChange={setWind} />
+          <SunSelect value={solar} onChange={setSolar} clearSky={clearSky} />
         </div>
       </details>
 
-      <div className={`ap-card-full ${cls}`}>
-        <div className="ap-side">
-          Gefühlte Temperatur
-          <Info>UTCI (Universeller Thermischer Klimaindex, Bröde 2012): die unter gegebener Hitze, Feuchte, Wind und Strahlung thermisch äquivalente Lufttemperatur einer Referenzumgebung.</Info>
-        </div>
-        <div className="ap-val-lg">{fmt1(feltSun)}{' '}°C</div>
-        <div className="ap-cat">{cat.label}</div>
-        <div className="ap-formula">
-          Lufttemperatur {fmt1(outTemp)}°C
-          <span className="ap-diff"> ({diff >= 0 ? '+' : ''}{fmt1(diff)})</span>
-        </div>
-        <div className="ap-meta">
-          <span>
-            Strahlungstemp. {fmt1(Tr)}°C
-            <Info>Mittlere Strahlungstemperatur: berücksichtigt Sonneneinstrahlung. Im Schatten ≈ Lufttemperatur.</Info>
-          </span>
-          <span>
-            Sonnenanteil {sunBoost >= 0 ? '+' : ''}{fmt1(sunBoost)}°C
-            <Info>Differenz zwischen gefühlter Temperatur in Sonne und im Schatten bei sonst gleichen Bedingungen.</Info>
-          </span>
-          <span>
-            Taupunkt {fmt1(dp)}°C · {fmt1(ah)} g/m³
-            <Info>Taupunkt und absolute Feuchte der Aussenluft.</Info>
-          </span>
-        </div>
+      <section className="felt-row">
+        <FeltCard side="Schatten" icon="🌳" feltTemp={feltShade} airTemp={outTemp} />
+        <FeltCard side="Sonne"    icon="☀️" feltTemp={feltSun}   airTemp={outTemp} />
+      </section>
+
+      <div className="felt-meta">
+        <span>
+          Lufttemp. {fmt1(outTemp)}°C
+        </span>
+        <span>
+          Strahlungstemp. {fmt1(Tr)}°C
+          <Info>Mittlere Strahlungstemperatur: berücksichtigt Sonneneinstrahlung. Im Schatten ≈ Lufttemperatur.</Info>
+        </span>
+        <span>
+          Taupunkt {fmt1(dp)}°C · {fmt1(ah)} g/m³
+          <Info>Taupunkt und absolute Feuchte der Aussenluft.</Info>
+        </span>
       </div>
 
       <details className="section-card formula-card">
@@ -348,7 +407,8 @@ function FeltTab({
         </summary>
         <div className="section-body formula-body">
           <p><strong>UTCI</strong> – Bröde et al. (2012). Universeller thermischer Klimaindex: 210-Term-Polynom 6. Grades in Lufttemperatur, Windgeschwindigkeit, mittlerer Strahlungstemperatur und Dampfdruck. Windlimit: 0.5–17 m/s.</p>
-          <p><strong>Strahlungstemperatur</strong> – vereinfachte lineare Näherung <code>Tmrt = T + 0.025·I</code> aus der Globalstrahlung I [W/m²]. Pralle Sonne (~1000 W/m²) ≈ +25°C, kalibriert an Globethermometer-Messungen.</p>
+          <p><strong>Strahlungstemperatur</strong> – vereinfachte lineare Näherung <code>Tmrt = T + 0.025·I</code> aus der Globalstrahlung I [W/m²].</p>
+          <p><strong>Sonnenstufen</strong> – als Anteil des tagesaktuellen Klarhimmel-Maximums (Haurwitz-Modell, Sonnenstand aus Datum &amp; Breitengrad). Dadurch ist „Pralle Sonne&ldquo; im Winter schwächer als im Sommer.</p>
           <p><strong>Magnus-Tetens</strong> (Alduchov & Eskridge 1996): <code>e_s = 6.1078·exp(17.625T / (243.04+T))</code>. Taupunkt durch Invertierung. Abs. Feuchte: <code>rho_w = 216.7·e / T_K</code>.</p>
           <p className="muted">Strahlungsmodell ohne Sonnenstand, Albedo und Kleidung – Richtwert, kein Messwert. Ohne Körperaktivität und CLO-Wert.</p>
         </div>
@@ -508,6 +568,7 @@ export default function App() {
               wind={wind}       setWind={setWind}
               solar={solar}     setSolar={setSolar}
               geoStatus={geoStatus}
+              lat={geoLocation?.lat ?? 50}
             />
           : <LueftenTab
               inTemp={inTemp}   setInTemp={setInTemp}

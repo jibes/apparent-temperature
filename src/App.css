@@ -429,6 +429,78 @@ input[type='range'] {
   line-height: 1.1;
 }
 
+/* ── Preset chip row (wind) ── */
+.preset-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  margin-top: 0.45rem;
+}
+.preset-btn {
+  flex: 1;
+  min-width: fit-content;
+  background: #1e2235;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 0.28rem 0.5rem;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: border-color 0.15s, background 0.15s, color 0.15s;
+}
+.preset-btn.active {
+  border-color: var(--accent);
+  background: #2a2f55;
+  color: var(--text);
+}
+
+/* ── Shade / Sun felt cards ── */
+.felt-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.6rem;
+  margin-bottom: 0.6rem;
+}
+.felt-card {
+  border-radius: var(--r);
+  padding: 1rem 0.9rem;
+  border: 1px solid transparent;
+  text-align: center;
+}
+.felt-head {
+  font-size: 0.74rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  opacity: 0.75;
+  margin-bottom: 0.4rem;
+}
+.felt-card .ap-val {
+  font-size: 2.4rem;
+  font-weight: 800;
+  letter-spacing: -1.5px;
+  line-height: 1;
+}
+.felt-card .ap-cat { font-size: 0.78rem; margin-top: 0.25rem; }
+.felt-card .ap-formula { text-align: center; margin-top: 0.25rem; font-size: 0.7rem; }
+
+.felt-meta {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.3rem 1rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  padding: 0.7rem 0.9rem;
+  margin-bottom: 0.6rem;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+.felt-meta span { display: inline-flex; align-items: center; }
+
 /* temp colour themes */
 .very-hot    { background: #4a0a0a; color: #fca5a5; border-color: #7f1d1d; }
 .hot         { background: #431407; color: #fdba74; border-color: #7c2d12; }
