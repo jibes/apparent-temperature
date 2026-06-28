@@ -22,13 +22,20 @@ function colorClass(t) {
   return 'very-cold'
 }
 
-// rough label for solar slider
-function sunLabel(s) {
-  if (s < 50)   return 'Nacht / Schatten'
-  if (s < 200)  return 'Bedeckt'
-  if (s < 500)  return 'Leicht bewölkt'
-  if (s < 800)  return 'Sonnig'
-  return 'Pralle Sonne'
+// Sun presets — intuitive levels mapped to representative global radiation
+// [W/m²]. The API value (or any number) snaps to the nearest level.
+const SUN_LEVELS = [
+  { val: 0,   icon: '🌙', label: 'Schatten' },
+  { val: 150, icon: '☁️', label: 'Bedeckt' },
+  { val: 400, icon: '⛅', label: 'Wechselhaft' },
+  { val: 700, icon: '🌤️', label: 'Sonnig' },
+  { val: 950, icon: '☀️', label: 'Pralle Sonne' },
+]
+
+function nearestSunLevel(s) {
+  return SUN_LEVELS.reduce((best, lvl) =>
+    Math.abs(lvl.val - s) < Math.abs(best.val - s) ? lvl : best
+  )
 }
 
 function ventVerdict(Tin, RHin, Tout, RHout) {
@@ -72,6 +79,38 @@ function Slider({ label, value, onChange, min, max, step, unit, sublabel }) {
         <span>{min}{' '}{unit}</span>
         {sublabel ? <span className="slider-sub">{sublabel}</span> : null}
         <span>{max}{' '}{unit}</span>
+      </div>
+    </div>
+  )
+}
+
+// Sun selector — segmented icon buttons
+
+function SunSelect({ value, onChange }) {
+  const active = nearestSunLevel(value)
+  return (
+    <div className="slider-group">
+      <div className="slider-header">
+        <span className="slider-label">
+          Sonne
+          <Info>Wie stark trifft die Sonne dich? Direkte Sonne heizt den Körper über die Lufttemperatur hinaus auf; im Schatten zählt nur die Luft.</Info>
+        </span>
+        <span className="value-badge">{active.label}</span>
+      </div>
+      <div className="sun-select">
+        {SUN_LEVELS.map(lvl => (
+          <button
+            key={lvl.val}
+            type="button"
+            className={`sun-btn ${lvl.val === active.val ? 'active' : ''}`}
+            onClick={() => onChange(lvl.val)}
+            title={lvl.label}
+            aria-label={lvl.label}
+          >
+            <span className="sun-icon">{lvl.icon}</span>
+            <span className="sun-cap">{lvl.label}</span>
+          </button>
+        ))}
       </div>
     </div>
   )
@@ -265,15 +304,14 @@ function FeltTab({
             <Chip>{outTemp}{' '}°C</Chip>
             <Chip>{outRH}{' '}%</Chip>
             <Chip>{wind}{' '}km/h</Chip>
-            <Chip>{solar}{' '}W/m²</Chip>
+            <Chip>{nearestSunLevel(solar).icon}</Chip>
           </span>
         </summary>
         <div className="section-body">
           <Slider label="Temperatur"       value={outTemp} onChange={setOutTemp} min={-30} max={50}   step={0.5} unit="°C" />
           <Slider label="Luftfeuchtigkeit" value={outRH}   onChange={setOutRH}   min={0}   max={100}  step={1}   unit="%" />
           <Slider label="Wind"             value={wind}    onChange={setWind}    min={0}   max={120}  step={1}   unit="km/h" />
-          <Slider label="Sonne"            value={solar}   onChange={setSolar}   min={0}   max={1000} step={10}  unit="W/m²"
-            sublabel={sunLabel(solar)} />
+          <SunSelect value={solar} onChange={setSolar} />
         </div>
       </details>
 

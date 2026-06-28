@@ -396,6 +396,39 @@ input[type='range'] {
   font-weight: 600;
 }
 
+/* ── Sun selector ── */
+.sun-select {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 0.3rem;
+  margin-top: 0.4rem;
+}
+.sun-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.2rem;
+  background: #1e2235;
+  border: 1px solid var(--border);
+  border-radius: var(--rs);
+  padding: 0.45rem 0.15rem 0.35rem;
+  cursor: pointer;
+  color: var(--muted);
+  transition: border-color 0.15s, background 0.15s, color 0.15s;
+}
+.sun-btn.active {
+  border-color: var(--accent);
+  background: #2a2f55;
+  color: var(--text);
+}
+.sun-icon { font-size: 1.15rem; line-height: 1; }
+.sun-cap {
+  font-size: 0.58rem;
+  font-weight: 600;
+  text-align: center;
+  line-height: 1.1;
+}
+
 /* temp colour themes */
 .very-hot    { background: #4a0a0a; color: #fca5a5; border-color: #7f1d1d; }
 .hot         { background: #431407; color: #fdba74; border-color: #7c2d12; }
