@@ -416,6 +416,26 @@ export function utciCategory(utciVal) {
   return               { label: 'Extremer Kältestress',              cls: 'very-cold' }
 }
 
+// Personalised felt-temperature adjustment on top of UTCI [°C].
+// IMPORTANT: standard UTCI already assumes a person walking at ~4 km/h
+// (≈2.3 MET) in temperature-adaptive clothing. This is a documented,
+// bounded first-order personalisation — NOT part of the UTCI standard.
+//   met  metabolic rate [MET]  (1.0 rest · 2.3 walk · 4.0 sport)
+//   clo  clothing insulation [clo] (0.3 light · 0.7 normal · 1.2 warm)
+export function comfortAdjust(utciVal, met = 2.3, clo = 0.7) {
+  const MET_REF = 2.3
+  const CLO_REF = 0.7
+  const clamp = (x, lo, hi) => Math.min(hi, Math.max(lo, x))
+
+  // Clothing & extra metabolism keep you warm mainly in the cold; the effect
+  // fades to ~0 once the felt temperature climbs above ~26°C.
+  const coldW = clamp((26 - utciVal) / 30, 0, 1)
+  const cloAdj = (clo - CLO_REF) * 8 * coldW            // ±~4°C across clo range
+  // Activity always adds metabolic heat: strongest in cold, ~40% in heat.
+  const actAdj = (met - MET_REF) * 3 * (0.4 + 0.6 * coldW)
+  return utciVal + cloAdj + actAdj
+}
+
 // Apparent temperature for indoor conditions (no wind)
 export function indoorApparentTemp(T, RH) {
   if (T >= 27) {

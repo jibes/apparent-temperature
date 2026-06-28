@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import {
-  utci, utciCategory, meanRadiantTemp, clearSkyMax,
+  utci, utciCategory, meanRadiantTemp, clearSkyMax, comfortAdjust,
   ventilationAssessment,
   dewPoint,
   absoluteHumidity,
@@ -56,6 +56,18 @@ function nearestPreset(levels, v) {
     Math.abs(lvl.val - v) < Math.abs(best.val - v) ? lvl : best
   )
 }
+
+// Activity (MET) and clothing (clo) presets for personalisation.
+const ACT_LEVELS = [
+  { val: 1.0, label: '🪑 Ruhend' },
+  { val: 2.3, label: '🚶 Gehen' },
+  { val: 4.0, label: '🏃 Sport' },
+]
+const CLO_LEVELS = [
+  { val: 0.3, label: '👕 Leicht' },
+  { val: 0.7, label: '🧥 Normal' },
+  { val: 1.2, label: '🧣 Warm' },
+]
 
 function ventVerdict(Tin, RHin, Tout, RHout) {
   const a = ventilationAssessment(Tin, RHin, Tout, RHout)
@@ -349,14 +361,17 @@ function FeltCard({ side, icon, feltTemp, airTemp }) {
 
 function FeltTab({
   outTemp, setOutTemp, outRH, setOutRH, wind, setWind, solar, setSolar,
+  met, setMet, clo, setClo,
   geoStatus, lat, lon,
 }) {
   const clearSky  = clearSkyMax(lat, lon)
   const Tr        = meanRadiantTemp(outTemp, solar)
-  const feltSun   = utci(outTemp, outRH, wind, Tr)
-  const feltShade = utci(outTemp, outRH, wind, outTemp)
+  const feltSun   = comfortAdjust(utci(outTemp, outRH, wind, Tr), met, clo)
+  const feltShade = comfortAdjust(utci(outTemp, outRH, wind, outTemp), met, clo)
   const dp        = dewPoint(outTemp, outRH)
   const ah        = absoluteHumidity(outTemp, outRH)
+  const actLabel  = nearestPreset(ACT_LEVELS, met).label
+  const cloLabel  = nearestPreset(CLO_LEVELS, clo).label
 
   return (
     <>
@@ -379,6 +394,29 @@ function FeltTab({
           <Slider label="Wind"             value={wind}    onChange={setWind}    min={0}   max={120}  step={1}   unit="km/h" />
           <PresetRow levels={WIND_LEVELS} value={wind} onChange={setWind} />
           <SunSelect value={solar} onChange={setSolar} clearSky={clearSky} />
+        </div>
+      </details>
+
+      <details className="section-card">
+        <summary className="section-summary">
+          <span className="section-name">
+            Persönlich
+            <Info>Standard-UTCI nimmt eine gehende Person (~2,3 MET) in angepasster Kleidung an. Diese Stufen sind eine vereinfachte Personalisierung – kein UTCI-Standard.</Info>
+          </span>
+          <span className="summary-chips">
+            <Chip>{actLabel}</Chip>
+            <Chip>{cloLabel}</Chip>
+          </span>
+        </summary>
+        <div className="section-body">
+          <div className="slider-group">
+            <span className="slider-label">Aktivität</span>
+            <PresetRow levels={ACT_LEVELS} value={met} onChange={setMet} />
+          </div>
+          <div className="slider-group">
+            <span className="slider-label">Kleidung</span>
+            <PresetRow levels={CLO_LEVELS} value={clo} onChange={setClo} />
+          </div>
         </div>
       </details>
 
@@ -410,7 +448,8 @@ function FeltTab({
           <p><strong>Strahlungstemperatur</strong> – vereinfachte lineare Näherung <code>Tmrt = T + 0.025·I</code> aus der Globalstrahlung I [W/m²].</p>
           <p><strong>Sonnenstufen</strong> – als Anteil des aktuellen Klarhimmel-Maximums (Haurwitz-Modell). Der Sonnenstand wird per NOAA-Algorithmus aus Datum, <em>Uhrzeit</em>, Breiten- und Längengrad berechnet – „Pralle Sonne&ldquo; ist daher im Winter und abends schwächer, nachts null.</p>
           <p><strong>Magnus-Tetens</strong> (Alduchov & Eskridge 1996): <code>e_s = 6.1078·exp(17.625T / (243.04+T))</code>. Taupunkt durch Invertierung. Abs. Feuchte: <code>rho_w = 216.7·e / T_K</code>.</p>
-          <p className="muted">Strahlungsmodell ohne Sonnenstand, Albedo und Kleidung – Richtwert, kein Messwert. Ohne Körperaktivität und CLO-Wert.</p>
+          <p><strong>Persönlich</strong> – Aktivität (MET) &amp; Kleidung (clo) als vereinfachter, begrenzter Aufschlag auf den UTCI. Kein UTCI-Standard: dort sind Gehen (~2,3 MET) und adaptive Kleidung bereits fix angenommen.</p>
+          <p className="muted">Strahlungsmodell ohne Albedo. Richtwerte, keine Messwerte.</p>
         </div>
       </details>
     </>
@@ -479,6 +518,8 @@ export default function App() {
   const [outRH,   setOutRH]   = useState(65)
   const [wind,    setWind]    = useState(12)
   const [solar,   setSolar]   = useState(0)
+  const [met,     setMet]     = useState(2.3)
+  const [clo,     setClo]     = useState(0.7)
   const [inTemp,  setInTemp]  = useState(24)
   const [inRH,    setInRH]    = useState(55)
 
@@ -567,6 +608,8 @@ export default function App() {
               outRH={outRH}     setOutRH={setOutRH}
               wind={wind}       setWind={setWind}
               solar={solar}     setSolar={setSolar}
+              met={met}         setMet={setMet}
+              clo={clo}         setClo={setClo}
               geoStatus={geoStatus}
               lat={geoLocation?.lat ?? 50}
               lon={geoLocation?.lon ?? 10}

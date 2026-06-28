@@ -3,7 +3,7 @@ import {
   saturationPressure, vaporPressure, dewPoint, absoluteHumidity,
   specificEnthalpy, heatIndex, windChill,
   utci, utciCategory, meanRadiantTemp, clearSkyMax,
-  solarElevation, clearSkyGHI,
+  solarElevation, clearSkyGHI, comfortAdjust,
 } from './formulas.js'
 
 // ── Psychrometrics (exact, hand-verified) ──────────────────────────────────
@@ -127,6 +127,30 @@ describe('UTCI', () => {
   })
   it('wind chills in cold', () => {
     expect(utci(0, 60, 40, 0)).toBeLessThan(utci(0, 60, 5, 0))
+  })
+})
+
+describe('comfort adjustment (clothing & activity)', () => {
+  it('no change at reference (walking, normal clothing)', () => {
+    expect(comfortAdjust(5, 2.3, 0.7)).toBeCloseTo(5, 6)
+  })
+  it('warm clothing raises felt temp in the cold', () => {
+    expect(comfortAdjust(-5, 2.3, 1.2)).toBeGreaterThan(-5)
+  })
+  it('light clothing lowers felt temp in the cold', () => {
+    expect(comfortAdjust(-5, 2.3, 0.3)).toBeLessThan(-5)
+  })
+  it('resting feels colder than walking in the cold', () => {
+    expect(comfortAdjust(-5, 1.0, 0.7)).toBeLessThan(comfortAdjust(-5, 2.3, 0.7))
+  })
+  it('activity adds heat stress when hot', () => {
+    expect(comfortAdjust(35, 4.0, 0.7)).toBeGreaterThan(comfortAdjust(35, 2.3, 0.7))
+  })
+  it('clothing barely matters when hot', () => {
+    expect(comfortAdjust(35, 2.3, 1.2)).toBeCloseTo(comfortAdjust(35, 2.3, 0.7), 5)
+  })
+  it('stays bounded across extremes', () => {
+    expect(Math.abs(comfortAdjust(-20, 4.0, 1.2) - (-20))).toBeLessThan(12)
   })
 })
 
