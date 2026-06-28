@@ -516,8 +516,9 @@ input[type='range'] {
 }
 .fc-scroll svg { display: block; }
 .fc-grid     { stroke: var(--border); stroke-width: 1; opacity: 0.5; }
-.fc-daygrid  { stroke: var(--border); stroke-width: 1; opacity: 0.45; stroke-dasharray: 2 3; }
-.fc-hourgrid { stroke: var(--border); stroke-width: 1; opacity: 0.2; }
+.fc-daygrid  { stroke: var(--muted);  stroke-width: 1.2; opacity: 0.55; }
+.fc-grid6    { stroke: var(--border); stroke-width: 1; opacity: 0.5; }
+.fc-gridminor{ stroke: var(--border); stroke-width: 1; opacity: 0.18; }
 .fc-ylab, .fc-xlab, .fc-hourlab {
   fill: var(--muted);
   font-size: 9px;

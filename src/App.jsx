@@ -353,10 +353,17 @@ function ForecastChart({ hours }) {
   const yticks = []
   for (let v = yMin; v <= yMax; v += yStep) yticks.push(v)
 
-  const days = []
-  data.forEach((d, i) => { if (i === 0 || d.time.getHours() === 0) days.push({ i, date: d.time }) })
-  const sixes = []
-  data.forEach((d, i) => { if (d.time.getHours() % 6 === 0 && d.time.getHours() !== 0) sixes.push(i) })
+  // Gridline density adapts to how wide an hour is on screen.
+  const minorStep = pxPerHour >= 11 ? 1 : pxPerHour >= 6 ? 3 : 6 // hourly / 3h / 6h
+  const labelStep = pxPerHour >= 8 ? 3 : 6                        // x-axis time labels
+  const days = [], mids = [], minor = [], labels = []
+  data.forEach((d, i) => {
+    const hr = d.time.getHours()
+    if (i === 0 || hr === 0) days.push({ i, date: d.time })
+    else if (hr % 6 === 0) mids.push(i)
+    else if (hr % minorStep === 0) minor.push(i)
+    if (hr !== 0 && hr % labelStep === 0) labels.push(i)
+  })
 
   const spanDays = Math.round(n / 24)
   const si  = Math.min(selIdx, n - 1)
@@ -405,8 +412,11 @@ function ForecastChart({ hours }) {
             {yticks.map(v => (
               <line key={v} x1={0} x2={chartW} y1={y(v)} y2={y(v)} className="fc-grid" />
             ))}
-            {sixes.map(i => (
-              <line key={`s${i}`} x1={x(i)} x2={x(i)} y1={padT} y2={padT + innerH} className="fc-hourgrid" />
+            {minor.map(i => (
+              <line key={`mn${i}`} x1={x(i)} x2={x(i)} y1={padT} y2={padT + innerH} className="fc-gridminor" />
+            ))}
+            {mids.map(i => (
+              <line key={`m${i}`} x1={x(i)} x2={x(i)} y1={padT} y2={padT + innerH} className="fc-grid6" />
             ))}
             {days.map(({ i }) => i > 0 && (
               <line key={i} x1={x(i)} x2={x(i)} y1={padT} y2={padT + innerH} className="fc-daygrid" />
@@ -421,8 +431,8 @@ function ForecastChart({ hours }) {
             <circle cx={x(si)} cy={y(sel.sun.med)}   r="3.5" className="fc-dot sun" />
             <circle cx={x(si)} cy={y(sel.shade.med)} r="3.5" className="fc-dot shade" />
 
-            {/* hour labels at 6h marks, weekday/date at midnight */}
-            {sixes.map(i => (
+            {/* time labels at 3h/6h marks, weekday/date at midnight */}
+            {labels.map(i => (
               <text key={`h${i}`} x={x(i)} y={H - 7} className="fc-hourlab" textAnchor="middle">
                 {String(data[i].time.getHours()).padStart(2, '0')}
               </text>
