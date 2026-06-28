@@ -36,26 +36,6 @@ function colorClass(t) {
   return 'very-cold'
 }
 
-// Sun presets — intuitive sky conditions as a fraction of the day's peak
-// clear-sky irradiance, so each level scales with season & latitude.
-const SUN_LEVELS = [
-  { frac: 0,    icon: '🌙', label: 'Schatten' },
-  { frac: 0.2,  icon: '☁️', label: 'Bedeckt' },
-  { frac: 0.5,  icon: '⛅', label: 'Wechselhaft' },
-  { frac: 0.85, icon: '🌤️', label: 'Sonnig' },
-  { frac: 1.0,  icon: '☀️', label: 'Pralle Sonne' },
-]
-
-function sunLevelValues(clearSky) {
-  return SUN_LEVELS.map(l => ({ ...l, val: Math.round(l.frac * clearSky) }))
-}
-
-function nearestSunLevel(solar, clearSky) {
-  return sunLevelValues(clearSky).reduce((best, lvl) =>
-    Math.abs(lvl.val - solar) < Math.abs(best.val - solar) ? lvl : best
-  )
-}
-
 // Wind presets (Beaufort-ish), used alongside the slider.
 const WIND_LEVELS = [
   { val: 0,  label: 'Windstill' },
@@ -349,18 +329,15 @@ function FeltCard({ side, icon, feltTemp, airTemp }) {
 }
 
 function FeltTab({
-  outTemp, setOutTemp, outRH, setOutRH, wind, setWind, solar, setSolar,
+  outTemp, setOutTemp, outRH, setOutRH, wind, setWind,
   hours, geoStatus, lat, lon,
 }) {
-  const clearSky  = clearSkyMax(lat, lon)
-  const Tr        = meanRadiantTemp(outTemp, solar)
-  const feltSun   = utci(outTemp, outRH, wind, Tr)
+  const clearSky  = clearSkyMax(lat, lon)   // full-sun ceiling for now & place
+  const TrSun     = meanRadiantTemp(outTemp, clearSky)
   const feltShade = utci(outTemp, outRH, wind, outTemp)
+  const feltSun   = utci(outTemp, outRH, wind, TrSun)
   const dp        = dewPoint(outTemp, outRH)
   const ah        = absoluteHumidity(outTemp, outRH)
-
-  const sunActive  = nearestSunLevel(solar, clearSky)
-  const sunPresets = sunLevelValues(clearSky).map(l => ({ val: l.val, label: `${l.icon} ${l.label}` }))
 
   return (
     <>
@@ -374,7 +351,6 @@ function FeltTab({
             <Chip>{outTemp}{' '}°C</Chip>
             <Chip>{outRH}{' '}%</Chip>
             <Chip>{wind}{' '}km/h</Chip>
-            <Chip>{sunActive.icon}</Chip>
           </span>
         </summary>
         <div className="section-body">
@@ -384,12 +360,6 @@ function FeltTab({
             label="Wind" badge={`${wind} km/h`} presets={WIND_LEVELS}
             value={wind} onChange={setWind} min={0} max={120} step={1}
           />
-          <RangeControl
-            label="Sonne"
-            info={`Direkte Sonne heizt den Körper über die Lufttemperatur hinaus auf; im Schatten zählt nur die Luft. Stufen an Jahreszeit, Uhrzeit & Standort angepasst (Klarhimmel-Maximum jetzt: ${Math.round(clearSky)} W/m²).`}
-            badge={`${sunActive.icon} ${solar} W/m²`} presets={sunPresets}
-            value={solar} onChange={setSolar} min={0} max={1000} step={10}
-          />
         </div>
       </details>
 
@@ -398,11 +368,16 @@ function FeltTab({
         <FeltCard side="Sonne"    icon="☀️" feltTemp={feltSun}   airTemp={outTemp} />
       </section>
 
+      <p className="felt-range-note">
+        Spanne zwischen vollem Schatten und voller Sonne. Wie warm es sich wirklich anfühlt,
+        liegt je nach Bewölkung und Standort dazwischen.
+      </p>
+
       <div className="felt-meta">
         <span>Lufttemp. {fmt1(outTemp)}°C</span>
         <span>
-          Strahlungstemp. {fmt1(Tr)}°C
-          <Info>Mittlere Strahlungstemperatur: berücksichtigt Sonneneinstrahlung. Im Schatten ≈ Lufttemperatur.</Info>
+          Strahlungstemp. Sonne {fmt1(TrSun)}°C
+          <Info>Mittlere Strahlungstemperatur bei klarem Himmel (Sonnenstand jetzt). Im Schatten ≈ Lufttemperatur.</Info>
         </span>
         <span>
           Taupunkt {fmt1(dp)}°C · {fmt1(ah)} g/m³
@@ -418,8 +393,8 @@ function FeltTab({
         </summary>
         <div className="section-body formula-body">
           <p><strong>UTCI</strong> – Bröde et al. (2012). Universeller thermischer Klimaindex: 210-Term-Polynom 6. Grades in Lufttemperatur, Windgeschwindigkeit, mittlerer Strahlungstemperatur und Dampfdruck. Windlimit: 0.5–17 m/s.</p>
+          <p><strong>Schatten vs. Sonne</strong> – die beiden Karten zeigen die Spanne: Schatten ohne Strahlung (Tmrt = Luft), Sonne bei klarem Himmel. Das Klarhimmel-Maximum kommt aus dem Sonnenstand (NOAA-Algorithmus: Datum, Uhrzeit, Breiten- &amp; Längengrad) und dem Haurwitz-Modell – im Winter und abends schwächer, nachts null.</p>
           <p><strong>Strahlungstemperatur</strong> – vereinfachte lineare Näherung <code>Tmrt = T + 0.025·I</code> aus der Globalstrahlung I [W/m²].</p>
-          <p><strong>Sonnenstufen</strong> – als Anteil des aktuellen Klarhimmel-Maximums (Haurwitz-Modell). Der Sonnenstand wird per NOAA-Algorithmus aus Datum, <em>Uhrzeit</em>, Breiten- und Längengrad berechnet – „Pralle Sonne&ldquo; ist daher im Winter und abends schwächer, nachts null.</p>
           <p><strong>Magnus-Tetens</strong> (Alduchov & Eskridge 1996): <code>e_s = 6.1078·exp(17.625T / (243.04+T))</code>. Taupunkt durch Invertierung. Abs. Feuchte: <code>rho_w = 216.7·e / T_K</code>.</p>
           <p className="muted">UTCI nimmt eine gehende Person in angepasster Kleidung an. Richtwerte, keine Messwerte.</p>
         </div>
@@ -489,7 +464,6 @@ export default function App() {
   const [outTemp, setOutTemp] = usePersistentState('outTemp', 28)
   const [outRH,   setOutRH]   = usePersistentState('outRH', 65)
   const [wind,    setWind]    = usePersistentState('wind', 12)
-  const [solar,   setSolar]   = usePersistentState('solar', 0)
   const [inTemp,  setInTemp]  = usePersistentState('inTemp', 24)
   const [inRH,    setInRH]    = usePersistentState('inRH', 55)
 
@@ -501,7 +475,7 @@ export default function App() {
   // load so the Lüften tab starts from a sensible baseline (= outdoor temp).
   const prefilledRef = useRef(false)
   function applyWeather(w) {
-    setOutTemp(w.temp); setOutRH(w.humidity); setWind(w.wind); setSolar(w.solar)
+    setOutTemp(w.temp); setOutRH(w.humidity); setWind(w.wind)
     if (!prefilledRef.current) {
       setInTemp(w.temp)
       prefilledRef.current = true
@@ -601,7 +575,6 @@ export default function App() {
               outTemp={outTemp} setOutTemp={setOutTemp}
               outRH={outRH}     setOutRH={setOutRH}
               wind={wind}       setWind={setWind}
-              solar={solar}     setSolar={setSolar}
               hours={hours}
               geoStatus={geoStatus}
               lat={geoLocation?.lat ?? 50}

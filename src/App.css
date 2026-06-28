@@ -456,6 +456,14 @@ input[type='range'] {
 }
 .felt-meta span { display: inline-flex; align-items: center; }
 
+.felt-range-note {
+  font-size: 0.74rem;
+  line-height: 1.5;
+  color: var(--muted);
+  text-align: center;
+  margin: -0.1rem 0.3rem 0.6rem;
+}
+
 /* ── 24h forecast strip ── */
 .forecast {
   background: var(--surface);
