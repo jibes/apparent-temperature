@@ -101,6 +101,18 @@ export function windChill(T, v) {
 //   Pa:  +5.127 → humid air increases heat stress
 //
 // Usage: set d_tr = 0 for shade (Tr = Ta); set vel = 0.5 for calm indoor air.
+
+// Mean radiant temperature from global (shortwave) solar radiation.
+// In shade Tr ≈ Ta. Sunlight absorbed by a body raises the radiant
+// environment well above air temperature. This is a simplified linear
+// approximation, calibrated so that full midday sun (~1000 W/m²) yields
+// ΔTmrt ≈ 25 °C — consistent with globe-thermometer observations.
+// (A rigorous treatment would use SolarCal / ASHRAE 55 with solar
+// geometry, albedo and clothing absorptivity.)
+export function meanRadiantTemp(Ta, solar) {
+  return Ta + 0.025 * Math.max(0, solar)
+}
+
 export function utci(Ta, RH, va_kmh, Tr = null) {
   const vel = Math.max(0.5, Math.min(17, va_kmh / 3.6)) // km/h → m/s, clamp
   const d_tr = (Tr ?? Ta) - Ta                          // radiant offset [°C]

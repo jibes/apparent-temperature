@@ -74,6 +74,33 @@ h1 {
 }
 .geo-refresh:hover { color: var(--text); border-color: var(--accent); }
 
+/* ── Tabs ── */
+.tabs {
+  display: flex;
+  gap: 0.3rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  padding: 0.25rem;
+  margin-bottom: 0.9rem;
+}
+.tab {
+  flex: 1;
+  background: none;
+  border: none;
+  color: var(--muted);
+  font-size: 0.9rem;
+  font-weight: 700;
+  padding: 0.55rem 0.5rem;
+  border-radius: var(--rs);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.tab.active {
+  background: var(--accent);
+  color: #0d0f18;
+}
+
 /* ── Collapsible section cards ── */
 .section-card {
   background: var(--surface);
@@ -291,6 +318,65 @@ input[type='range'] {
   margin-top: 0.5rem;
   font-size: 0.75rem;
   opacity: 0.75;
+}
+
+/* ── Full-width felt card ── */
+.ap-card-full {
+  border-radius: var(--r);
+  padding: 1.3rem 1.2rem;
+  border: 1px solid transparent;
+  margin-bottom: 0.6rem;
+  text-align: center;
+}
+.ap-card-full .ap-side {
+  justify-content: center;
+  display: flex;
+  align-items: center;
+}
+.ap-val-lg {
+  font-size: 3.4rem;
+  font-weight: 800;
+  letter-spacing: -2px;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  margin: 0.25rem 0 0.1rem;
+}
+.ap-cat {
+  font-size: 0.95rem;
+  font-weight: 700;
+  margin-bottom: 0.4rem;
+}
+.ap-card-full .ap-formula { text-align: center; }
+.ap-card-full .ap-meta {
+  align-items: center;
+  margin-top: 0.7rem;
+}
+
+/* ── Ventilation result block ── */
+.vent-result {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  padding: 0.85rem 1rem 1rem;
+  margin-bottom: 0.6rem;
+}
+.vent-result-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.5rem;
+}
+.vent-note {
+  font-size: 0.76rem;
+  line-height: 1.55;
+  color: var(--muted);
+  padding: 0 0.3rem;
+}
+.vent-note em { color: var(--text); font-style: italic; }
+
+.slider-sub {
+  color: var(--accent);
+  font-weight: 600;
 }
 
 /* temp colour themes */

@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import {
-  utci, utciCategory,
-  indoorApparentTemp,
+  utci, utciCategory, meanRadiantTemp,
   ventilationAssessment,
   dewPoint,
   absoluteHumidity,
@@ -23,6 +22,15 @@ function colorClass(t) {
   return 'very-cold'
 }
 
+// rough label for solar slider
+function sunLabel(s) {
+  if (s < 50)   return 'Nacht / Schatten'
+  if (s < 200)  return 'Bedeckt'
+  if (s < 500)  return 'Leicht bewölkt'
+  if (s < 800)  return 'Sonnig'
+  return 'Pralle Sonne'
+}
+
 function ventVerdict(Tin, RHin, Tout, RHout) {
   const a = ventilationAssessment(Tin, RHin, Tout, RHout)
   const dry  = a.deltaAH < -0.3
@@ -39,7 +47,7 @@ function ventVerdict(Tin, RHin, Tout, RHout) {
 
 // Slider with pointer capture + touch resistance
 
-function Slider({ label, value, onChange, min, max, step, unit }) {
+function Slider({ label, value, onChange, min, max, step, unit, sublabel }) {
   const inputRef = useRef()
 
   function onPointerDown(e) {
@@ -62,6 +70,7 @@ function Slider({ label, value, onChange, min, max, step, unit }) {
       />
       <div className="slider-ends">
         <span>{min}{' '}{unit}</span>
+        {sublabel ? <span className="slider-sub">{sublabel}</span> : null}
         <span>{max}{' '}{unit}</span>
       </div>
     </div>
@@ -88,35 +97,6 @@ function Info({ children }) {
 
 function Chip({ children, cls }) {
   return <span className={`chip ${cls ?? ''}`}>{children}</span>
-}
-
-// Felt temperature cards
-
-function ApparentCard({ side, airTemp, feltTemp, label, dp, ah }) {
-  const diff = feltTemp - airTemp
-  const cls  = colorClass(feltTemp)
-  return (
-    <div className={`ap-card ${cls}`}>
-      <div className="ap-side">{side}</div>
-      <div className="ap-val">{fmt1(feltTemp)}{' '}°C</div>
-      <div className="ap-formula">
-        {label}
-        {diff !== 0 && (
-          <span className="ap-diff"> ({diff >= 0 ? '+' : ''}{fmt1(diff)})</span>
-        )}
-      </div>
-      <div className="ap-meta">
-        <span>
-          Tp{' '}{fmt1(dp)}°C
-          <Info>Taupunkt: Temperatur, bei der der Wasserdampf der Luft zu kondensieren beginnt.</Info>
-        </span>
-        <span>
-          {fmt1(ah)}{' '}g/m³
-          <Info>Absolute Feuchte: Tatsächlicher Wassergehalt der Luft -- temperaturunabhängig.</Info>
-        </span>
-      </div>
-    </div>
-  )
 }
 
 // Ventilation table
@@ -207,12 +187,150 @@ function GeoBar({ status, location, onRefresh }) {
   )
 }
 
+// Felt-temperature tab (outdoor: temp + humidity + wind + sun)
+
+function FeltTab({
+  outTemp, setOutTemp, outRH, setOutRH, wind, setWind, solar, setSolar,
+  geoStatus,
+}) {
+  const Tr        = meanRadiantTemp(outTemp, solar)
+  const feltSun   = utci(outTemp, outRH, wind, Tr)
+  const feltShade = utci(outTemp, outRH, wind, outTemp)
+  const cat       = utciCategory(feltSun)
+  const cls       = colorClass(feltSun)
+  const diff      = feltSun - outTemp
+  const dp        = dewPoint(outTemp, outRH)
+  const ah        = absoluteHumidity(outTemp, outRH)
+  const sunBoost  = feltSun - feltShade
+
+  return (
+    <>
+      <details className="section-card" open>
+        <summary className="section-summary">
+          <span className="section-name">
+            Aussen
+            {geoStatus === 'ok' && <span className="live-dot" title="Live-Wetter">●</span>}
+          </span>
+          <span className="summary-chips">
+            <Chip>{outTemp}{' '}°C</Chip>
+            <Chip>{outRH}{' '}%</Chip>
+            <Chip>{wind}{' '}km/h</Chip>
+            <Chip>{solar}{' '}W/m²</Chip>
+          </span>
+        </summary>
+        <div className="section-body">
+          <Slider label="Temperatur"       value={outTemp} onChange={setOutTemp} min={-30} max={50}   step={0.5} unit="°C" />
+          <Slider label="Luftfeuchtigkeit" value={outRH}   onChange={setOutRH}   min={0}   max={100}  step={1}   unit="%" />
+          <Slider label="Wind"             value={wind}    onChange={setWind}    min={0}   max={120}  step={1}   unit="km/h" />
+          <Slider label="Sonne"            value={solar}   onChange={setSolar}   min={0}   max={1000} step={10}  unit="W/m²"
+            sublabel={sunLabel(solar)} />
+        </div>
+      </details>
+
+      <div className={`ap-card-full ${cls}`}>
+        <div className="ap-side">
+          Gefühlte Temperatur
+          <Info>UTCI (Universeller Thermischer Klimaindex, Bröde 2012): die unter gegebener Hitze, Feuchte, Wind und Strahlung thermisch äquivalente Lufttemperatur einer Referenzumgebung.</Info>
+        </div>
+        <div className="ap-val-lg">{fmt1(feltSun)}{' '}°C</div>
+        <div className="ap-cat">{cat.label}</div>
+        <div className="ap-formula">
+          Lufttemperatur {fmt1(outTemp)}°C
+          <span className="ap-diff"> ({diff >= 0 ? '+' : ''}{fmt1(diff)})</span>
+        </div>
+        <div className="ap-meta">
+          <span>
+            Strahlungstemp. {fmt1(Tr)}°C
+            <Info>Mittlere Strahlungstemperatur: berücksichtigt Sonneneinstrahlung. Im Schatten ≈ Lufttemperatur.</Info>
+          </span>
+          <span>
+            Sonnenanteil {sunBoost >= 0 ? '+' : ''}{fmt1(sunBoost)}°C
+            <Info>Differenz zwischen gefühlter Temperatur in Sonne und im Schatten bei sonst gleichen Bedingungen.</Info>
+          </span>
+          <span>
+            Taupunkt {fmt1(dp)}°C · {fmt1(ah)} g/m³
+            <Info>Taupunkt und absolute Feuchte der Aussenluft.</Info>
+          </span>
+        </div>
+      </div>
+
+      <details className="section-card formula-card">
+        <summary className="section-summary">
+          <span className="section-name muted">Formeln & Methodik</span>
+        </summary>
+        <div className="section-body formula-body">
+          <p><strong>UTCI</strong> – Bröde et al. (2012). Universeller thermischer Klimaindex: 210-Term-Polynom 6. Grades in Lufttemperatur, Windgeschwindigkeit, mittlerer Strahlungstemperatur und Dampfdruck. Windlimit: 0.5–17 m/s.</p>
+          <p><strong>Strahlungstemperatur</strong> – vereinfachte lineare Näherung <code>Tmrt = T + 0.025·I</code> aus der Globalstrahlung I [W/m²]. Pralle Sonne (~1000 W/m²) ≈ +25°C, kalibriert an Globethermometer-Messungen.</p>
+          <p><strong>Magnus-Tetens</strong> (Alduchov & Eskridge 1996): <code>e_s = 6.1078·exp(17.625T / (243.04+T))</code>. Taupunkt durch Invertierung. Abs. Feuchte: <code>rho_w = 216.7·e / T_K</code>.</p>
+          <p className="muted">Strahlungsmodell ohne Sonnenstand, Albedo und Kleidung – Richtwert, kein Messwert. Ohne Körperaktivität und CLO-Wert.</p>
+        </div>
+      </details>
+    </>
+  )
+}
+
+// Ventilation tab (indoor + outdoor: temp + humidity only)
+
+function LueftenTab({ inTemp, setInTemp, inRH, setInRH, outTemp, setOutTemp, outRH, setOutRH }) {
+  const verdict = ventVerdict(inTemp, inRH, outTemp, outRH)
+
+  return (
+    <>
+      <details className="section-card">
+        <summary className="section-summary">
+          <span className="section-name">Innen</span>
+          <span className="summary-chips">
+            <Chip>{inTemp}{' '}°C</Chip>
+            <Chip>{inRH}{' '}%</Chip>
+          </span>
+        </summary>
+        <div className="section-body">
+          <Slider label="Temperatur"       value={inTemp} onChange={setInTemp} min={10} max={40}  step={0.5} unit="°C" />
+          <Slider label="Luftfeuchtigkeit" value={inRH}   onChange={setInRH}   min={0}  max={100} step={1}   unit="%" />
+        </div>
+      </details>
+
+      <details className="section-card">
+        <summary className="section-summary">
+          <span className="section-name">Aussen</span>
+          <span className="summary-chips">
+            <Chip>{outTemp}{' '}°C</Chip>
+            <Chip>{outRH}{' '}%</Chip>
+          </span>
+        </summary>
+        <div className="section-body">
+          <Slider label="Temperatur"       value={outTemp} onChange={setOutTemp} min={-30} max={50}  step={0.5} unit="°C" />
+          <Slider label="Luftfeuchtigkeit" value={outRH}   onChange={setOutRH}   min={0}   max={100} step={1}   unit="%" />
+        </div>
+      </details>
+
+      <div className="vent-result">
+        <div className="vent-result-head">
+          <span className="section-name">Empfehlung</span>
+          <span className={`verdict-chip ${verdict.cls}`}>{verdict.short}</span>
+        </div>
+        <VentTable Tin={inTemp} RHin={inRH} Tout={outTemp} RHout={outRH} />
+      </div>
+
+      <p className="vent-note">
+        Wind und Sonne fliessen hier bewusst nicht ein: Sie ändern nicht, <em>ob</em> die
+        Aussenluft trockener oder kühler ist. Wind beschleunigt zwar den Luftaustausch
+        (schnelleres Durchlüften), die Empfehlung selbst hängt aber nur von Temperatur und
+        Feuchte beider Seiten ab.
+      </p>
+    </>
+  )
+}
+
 // App
 
 export default function App() {
+  const [tab, setTab] = useState('felt')
+
   const [outTemp, setOutTemp] = useState(28)
   const [outRH,   setOutRH]   = useState(65)
   const [wind,    setWind]    = useState(12)
+  const [solar,   setSolar]   = useState(0)
   const [inTemp,  setInTemp]  = useState(24)
   const [inRH,    setInRH]    = useState(55)
 
@@ -227,7 +345,7 @@ export default function App() {
         setGeoStatus('locating')
         try {
           const w = await fetchCurrentWeather(coords.latitude, coords.longitude)
-          setOutTemp(w.temp); setOutRH(w.humidity); setWind(w.wind)
+          setOutTemp(w.temp); setOutRH(w.humidity); setWind(w.wind); setSolar(w.solar)
           let name = null
           try {
             const r = await fetch(
@@ -247,21 +365,6 @@ export default function App() {
 
   useEffect(() => { loadWeather() }, [])
 
-  const utciOut    = utci(outTemp, outRH, wind)
-  const utciCat    = utciCategory(utciOut)
-  const inResult   = indoorApparentTemp(inTemp, inRH)
-  const dpOut      = dewPoint(outTemp, outRH)
-  const dpIn       = dewPoint(inTemp, inRH)
-  const ahOut      = absoluteHumidity(outTemp, outRH)
-  const ahIn       = absoluteHumidity(inTemp, inRH)
-  const verdict    = ventVerdict(inTemp, inRH, outTemp, outRH)
-
-  const FORMULA_SHORT = {
-    hitzeindex: 'Hitzeindex',
-    windchill:  'Windchill',
-    keine:      '= Lufttemp.',
-  }
-
   return (
     <div className="app">
       <header>
@@ -269,87 +372,33 @@ export default function App() {
         <GeoBar status={geoStatus} location={geoLocation} onRefresh={loadWeather} />
       </header>
 
+      <nav className="tabs">
+        <button
+          className={`tab ${tab === 'felt' ? 'active' : ''}`}
+          onClick={() => setTab('felt')}
+        >Gefühlt</button>
+        <button
+          className={`tab ${tab === 'lueften' ? 'active' : ''}`}
+          onClick={() => setTab('lueften')}
+        >Lüften</button>
+      </nav>
+
       <main>
-        {/* Aussen collapsible */}
-        <details className="section-card">
-          <summary className="section-summary">
-            <span className="section-name">
-              Aussen
-              {geoStatus === 'ok' && <span className="live-dot" title="Live-Wetter">●</span>}
-            </span>
-            <span className="summary-chips">
-              <Chip>{outTemp}{' '}°C</Chip>
-              <Chip>{outRH}{' '}%</Chip>
-              <Chip>{wind}{' '}km/h</Chip>
-            </span>
-          </summary>
-          <div className="section-body">
-            <Slider label="Temperatur"       value={outTemp} onChange={setOutTemp} min={-30} max={50}  step={0.5} unit="°C" />
-            <Slider label="Luftfeuchtigkeit" value={outRH}   onChange={setOutRH}   min={0}   max={100} step={1}   unit="%" />
-            <Slider label="Wind"             value={wind}    onChange={setWind}    min={0}   max={120} step={1}   unit="km/h" />
-          </div>
-        </details>
-
-        {/* Innen collapsible */}
-        <details className="section-card">
-          <summary className="section-summary">
-            <span className="section-name">Innen</span>
-            <span className="summary-chips">
-              <Chip>{inTemp}{' '}°C</Chip>
-              <Chip>{inRH}{' '}%</Chip>
-            </span>
-          </summary>
-          <div className="section-body">
-            <Slider label="Temperatur"       value={inTemp} onChange={setInTemp} min={10} max={40}  step={0.5} unit="°C" />
-            <Slider label="Luftfeuchtigkeit" value={inRH}   onChange={setInRH}   min={0}  max={100} step={1}   unit="%" />
-          </div>
-        </details>
-
-        {/* Felt temps */}
-        <section className="ap-row">
-          <ApparentCard
-            side="Aussen"
-            airTemp={outTemp}
-            feltTemp={utciOut}
-            label={`UTCI ${utciCat.label}`}
-            dp={dpOut}
-            ah={ahOut}
-          />
-          <ApparentCard
-            side="Innen"
-            airTemp={inTemp}
-            feltTemp={inResult.value}
-            label={FORMULA_SHORT[inResult.formula]}
-            dp={dpIn}
-            ah={ahIn}
-          />
-        </section>
-
-        {/* Lüften collapsible */}
-        <details className="section-card">
-          <summary className="section-summary">
-            <span className="section-name">Lüften</span>
-            <span className={`verdict-chip ${verdict.cls}`}>{verdict.short}</span>
-          </summary>
-          <div className="section-body">
-            <VentTable Tin={inTemp} RHin={inRH} Tout={outTemp} RHout={outRH} />
-          </div>
-        </details>
-
-        {/* Formulas */}
-        <details className="section-card formula-card">
-          <summary className="section-summary">
-            <span className="section-name muted">Formeln & Methodik</span>
-          </summary>
-          <div className="section-body formula-body">
-            <p><strong>UTCI</strong> – Bröde et al. (2012). Universeller thermischer Klimaindex: 210-Term-Polynom 6. Grades in Lufttemperatur, Windgeschwindigkeit, mittlerer Strahlungstemperatur und Dampfdruck. Windlimit: 0.5–17 m/s. Ohne Sonnenstrahlung wird d_Tmrt = 0 angenommen.</p>
-            <p><strong>Hitzeindex</strong> – NWS/Rothfusz (1990). Zweistufig: einfache Steadman-Formel zuerst; Polynom (9 Terme) nur wenn mittlere Wärmebelastung ≥ 80°F. Korrekturen für RH &lt;13 % und &gt;85 %.</p>
-            <p><strong>Windchill</strong> – Environment Canada / NWS (2001). <code>13.12 + 0.6215T − 11.37v^0.16 + 0.3965T·v^0.16</code>. Gültig T ≤ 10°C, v ≥ 4.8 km/h.</p>
-            <p><strong>Magnus-Tetens</strong> (Alduchov & Eskridge 1996): <code>e_s = 6.1078·exp(17.625T / (243.04+T))</code>. Taupunkt durch Invertierung. Abs. Feuchte: <code>rho_w = 216.7·e / T_K</code>.</p>
-            <p><strong>Enthalpie</strong> (Psychrometrie): <code>h = 1.006T + W·(2501 + 1.86T)</code> kJ/kg. W = Mischungsverhältnis. Kombiniert fühlbare + latente Wärme.</p>
-            <p className="muted">Ohne Sonnenstrahlung (+8–15°C möglich), Körperaktivität und CLO-Wert.</p>
-          </div>
-        </details>
+        {tab === 'felt'
+          ? <FeltTab
+              outTemp={outTemp} setOutTemp={setOutTemp}
+              outRH={outRH}     setOutRH={setOutRH}
+              wind={wind}       setWind={setWind}
+              solar={solar}     setSolar={setSolar}
+              geoStatus={geoStatus}
+            />
+          : <LueftenTab
+              inTemp={inTemp}   setInTemp={setInTemp}
+              inRH={inRH}       setInRH={setInRH}
+              outTemp={outTemp} setOutTemp={setOutTemp}
+              outRH={outRH}     setOutRH={setOutRH}
+            />
+        }
       </main>
     </div>
   )
