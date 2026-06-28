@@ -65,8 +65,12 @@ describe('solar / radiant model', () => {
   it('MRT equals air temp with no sun', () => {
     expect(meanRadiantTemp(20, 0)).toBe(20)
   })
-  it('MRT = T + 0.025·I', () => {
+  it('MRT = T + 0.025·I (no extra albedo)', () => {
     expect(meanRadiantTemp(20, 800)).toBeCloseTo(40, 6)
+  })
+  it('snow albedo raises MRT', () => {
+    expect(meanRadiantTemp(20, 800, 0.8)).toBeCloseTo(48, 6) // 20 + 0.025·800·1.4
+    expect(meanRadiantTemp(20, 800, 0.8)).toBeGreaterThan(meanRadiantTemp(20, 800, 0))
   })
   it('clear-sky peaks ≈ 1037 W/m² with sun overhead (lat 23.45°, summer solstice noon)', () => {
     const v = clearSkyMax(23.45, 0, new Date('2025-06-21T12:00:00Z'))

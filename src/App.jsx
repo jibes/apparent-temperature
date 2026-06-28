@@ -68,6 +68,13 @@ const CLO_LEVELS = [
   { val: 0.7, label: '🧥 Normal' },
   { val: 1.2, label: '🧣 Warm' },
 ]
+// Ground reflectivity (added albedo above ordinary dark ground).
+const GROUND_LEVELS = [
+  { val: 0.0, label: '🌿 Normal' },
+  { val: 0.3, label: '🏖️ Sand' },
+  { val: 0.1, label: '🌊 Wasser' },
+  { val: 0.8, label: '❄️ Schnee' },
+]
 
 function ventVerdict(Tin, RHin, Tout, RHout) {
   const a = ventilationAssessment(Tin, RHin, Tout, RHout)
@@ -345,11 +352,11 @@ function GeoBar({ status, location, onRefresh, onSearch, onLocate }) {
 
 // 24-hour felt-temperature strip
 
-function ForecastStrip({ hours, met, clo }) {
+function ForecastStrip({ hours, met, clo, albedo }) {
   if (!hours || hours.length === 0) return null
 
   const felts = hours.map(h =>
-    comfortAdjust(utci(h.temp, h.humidity, h.wind, meanRadiantTemp(h.temp, h.solar)), met, clo)
+    comfortAdjust(utci(h.temp, h.humidity, h.wind, meanRadiantTemp(h.temp, h.solar, albedo)), met, clo)
   )
   const min = Math.min(...felts)
   const max = Math.max(...felts)
@@ -399,11 +406,11 @@ function FeltCard({ side, icon, feltTemp, airTemp }) {
 
 function FeltTab({
   outTemp, setOutTemp, outRH, setOutRH, wind, setWind, solar, setSolar,
-  met, setMet, clo, setClo,
+  met, setMet, clo, setClo, albedo, setAlbedo,
   hours, geoStatus, lat, lon,
 }) {
   const clearSky  = clearSkyMax(lat, lon)
-  const Tr        = meanRadiantTemp(outTemp, solar)
+  const Tr        = meanRadiantTemp(outTemp, solar, albedo)
   const feltSun   = comfortAdjust(utci(outTemp, outRH, wind, Tr), met, clo)
   const feltShade = comfortAdjust(utci(outTemp, outRH, wind, outTemp), met, clo)
   const dp        = dewPoint(outTemp, outRH)
@@ -432,6 +439,13 @@ function FeltTab({
           <Slider label="Wind"             value={wind}    onChange={setWind}    min={0}   max={120}  step={1}   unit="km/h" />
           <PresetRow levels={WIND_LEVELS} value={wind} onChange={setWind} />
           <SunSelect value={solar} onChange={setSolar} clearSky={clearSky} />
+          <div className="slider-group">
+            <span className="slider-label">
+              Untergrund
+              <Info>Heller Boden reflektiert Sonnenlicht zusätzlich auf den Körper. Schnee und Sand erhöhen die Strahlungstemperatur spürbar.</Info>
+            </span>
+            <PresetRow levels={GROUND_LEVELS} value={albedo} onChange={setAlbedo} />
+          </div>
         </div>
       </details>
 
@@ -477,7 +491,7 @@ function FeltTab({
         </span>
       </div>
 
-      <ForecastStrip hours={hours} met={met} clo={clo} />
+      <ForecastStrip hours={hours} met={met} clo={clo} albedo={albedo} />
 
       <details className="section-card formula-card">
         <summary className="section-summary">
@@ -560,6 +574,7 @@ export default function App() {
   const [solar,   setSolar]   = useState(0)
   const [met,     setMet]     = useState(2.3)
   const [clo,     setClo]     = useState(0.7)
+  const [albedo,  setAlbedo]  = useState(0)
   const [inTemp,  setInTemp]  = useState(24)
   const [inRH,    setInRH]    = useState(55)
 
@@ -653,6 +668,7 @@ export default function App() {
               solar={solar}     setSolar={setSolar}
               met={met}         setMet={setMet}
               clo={clo}         setClo={setClo}
+              albedo={albedo}   setAlbedo={setAlbedo}
               hours={hours}
               geoStatus={geoStatus}
               lat={geoLocation?.lat ?? 50}

@@ -109,8 +109,13 @@ export function windChill(T, v) {
 // ΔTmrt ≈ 25 °C — consistent with globe-thermometer observations.
 // (A rigorous treatment would use SolarCal / ASHRAE 55 with solar
 // geometry, albedo and clothing absorptivity.)
-export function meanRadiantTemp(Ta, solar) {
-  return Ta + 0.025 * Math.max(0, solar)
+// `albedo` is the *added* ground reflectivity above ordinary dark ground
+// (grass/asphalt ≈ 0). A standing body intercepts ~half of the upward-
+// reflected shortwave, so the effective solar load is I·(1 + 0.5·albedo):
+// fresh snow (~0.8) adds ~40%, dry sand (~0.3) ~15%.
+export function meanRadiantTemp(Ta, solar, albedo = 0) {
+  const eff = Math.max(0, solar) * (1 + 0.5 * Math.max(0, albedo))
+  return Ta + 0.025 * eff
 }
 
 // Solar elevation angle [°] for a place and instant (NOAA algorithm).
