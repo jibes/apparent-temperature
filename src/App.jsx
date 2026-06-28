@@ -469,7 +469,7 @@ function FeltTab({
 
   return (
     <>
-      <details className="section-card" open>
+      <details className="section-card">
         <summary className="section-summary">
           <span className="section-name">
             Aussen
