@@ -3,7 +3,7 @@ import {
   saturationPressure, vaporPressure, dewPoint, absoluteHumidity,
   specificEnthalpy, heatIndex, windChill,
   utci, utciCategory, meanRadiantTemp, clearSkyMax,
-  solarElevation, clearSkyGHI, comfortAdjust,
+  solarElevation, clearSkyGHI,
 } from './formulas.js'
 
 // ── Psychrometrics (exact, hand-verified) ──────────────────────────────────
@@ -65,12 +65,8 @@ describe('solar / radiant model', () => {
   it('MRT equals air temp with no sun', () => {
     expect(meanRadiantTemp(20, 0)).toBe(20)
   })
-  it('MRT = T + 0.025·I (no extra albedo)', () => {
+  it('MRT = T + 0.025·I', () => {
     expect(meanRadiantTemp(20, 800)).toBeCloseTo(40, 6)
-  })
-  it('snow albedo raises MRT', () => {
-    expect(meanRadiantTemp(20, 800, 0.8)).toBeCloseTo(48, 6) // 20 + 0.025·800·1.4
-    expect(meanRadiantTemp(20, 800, 0.8)).toBeGreaterThan(meanRadiantTemp(20, 800, 0))
   })
   it('clear-sky peaks ≈ 1037 W/m² with sun overhead (lat 23.45°, summer solstice noon)', () => {
     const v = clearSkyMax(23.45, 0, new Date('2025-06-21T12:00:00Z'))
@@ -131,30 +127,6 @@ describe('UTCI', () => {
   })
   it('wind chills in cold', () => {
     expect(utci(0, 60, 40, 0)).toBeLessThan(utci(0, 60, 5, 0))
-  })
-})
-
-describe('comfort adjustment (clothing & activity)', () => {
-  it('no change at reference (walking, normal clothing)', () => {
-    expect(comfortAdjust(5, 2.3, 0.7)).toBeCloseTo(5, 6)
-  })
-  it('warm clothing raises felt temp in the cold', () => {
-    expect(comfortAdjust(-5, 2.3, 1.2)).toBeGreaterThan(-5)
-  })
-  it('light clothing lowers felt temp in the cold', () => {
-    expect(comfortAdjust(-5, 2.3, 0.3)).toBeLessThan(-5)
-  })
-  it('resting feels colder than walking in the cold', () => {
-    expect(comfortAdjust(-5, 1.0, 0.7)).toBeLessThan(comfortAdjust(-5, 2.3, 0.7))
-  })
-  it('activity adds heat stress when hot', () => {
-    expect(comfortAdjust(35, 4.0, 0.7)).toBeGreaterThan(comfortAdjust(35, 2.3, 0.7))
-  })
-  it('clothing barely matters when hot', () => {
-    expect(comfortAdjust(35, 2.3, 1.2)).toBeCloseTo(comfortAdjust(35, 2.3, 0.7), 5)
-  })
-  it('stays bounded across extremes', () => {
-    expect(Math.abs(comfortAdjust(-20, 4.0, 1.2) - (-20))).toBeLessThan(12)
   })
 })
 

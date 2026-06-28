@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import {
-  utci, utciCategory, meanRadiantTemp, clearSkyMax, comfortAdjust,
+  utci, utciCategory, meanRadiantTemp, clearSkyMax,
   ventilationAssessment,
   dewPoint,
   absoluteHumidity,
@@ -71,25 +71,6 @@ function nearestPreset(levels, v) {
   )
 }
 
-// Activity (MET) and clothing (clo) presets for personalisation.
-const ACT_LEVELS = [
-  { val: 1.0, label: '🪑 Ruhend' },
-  { val: 2.3, label: '🚶 Gehen' },
-  { val: 4.0, label: '🏃 Sport' },
-]
-const CLO_LEVELS = [
-  { val: 0.3, label: '👕 Leicht' },
-  { val: 0.7, label: '🧥 Normal' },
-  { val: 1.2, label: '🧣 Warm' },
-]
-// Ground reflectivity (added albedo above ordinary dark ground).
-const GROUND_LEVELS = [
-  { val: 0.0, label: '🌿 Normal' },
-  { val: 0.3, label: '🏖️ Sand' },
-  { val: 0.1, label: '🌊 Wasser' },
-  { val: 0.8, label: '❄️ Schnee' },
-]
-
 function ventVerdict(Tin, RHin, Tout, RHout) {
   const a = ventilationAssessment(Tin, RHin, Tout, RHout)
   const dry  = a.deltaAH < -0.3
@@ -106,98 +87,54 @@ function ventVerdict(Tin, RHin, Tout, RHout) {
 
 // Slider with pointer capture + touch resistance
 
-function Slider({ label, value, onChange, min, max, step, unit, sublabel }) {
-  const inputRef = useRef()
-
-  function onPointerDown(e) {
-    e.currentTarget.setPointerCapture(e.pointerId)
-  }
-
+function Slider({ label, value, onChange, min, max, step, unit }) {
   return (
-    <div className="slider-group">
-      <div className="slider-header">
+    <div className="control">
+      <div className="control-header">
         <span className="slider-label">{label}</span>
         <span className="value-badge">{value}{' '}{unit}</span>
       </div>
       <input
-        ref={inputRef}
         type="range"
         min={min} max={max} step={step} value={value}
-        onChange={e => onChange(Number(e.target.value))}
-        onPointerDown={onPointerDown}
-        style={{ touchAction: 'pan-y' }}
-      />
-      <div className="slider-ends">
-        <span>{min}{' '}{unit}</span>
-        {sublabel ? <span className="slider-sub">{sublabel}</span> : null}
-        <span>{max}{' '}{unit}</span>
-      </div>
-    </div>
-  )
-}
-
-// Preset chip row (used for wind) — quick presets above/below a slider.
-
-function PresetRow({ levels, value, onChange, unit }) {
-  const active = nearestPreset(levels, value)
-  return (
-    <div className="preset-row">
-      {levels.map(lvl => (
-        <button
-          key={lvl.val}
-          type="button"
-          className={`preset-btn ${lvl.val === active.val ? 'active' : ''}`}
-          onClick={() => onChange(lvl.val)}
-        >
-          {lvl.label}
-        </button>
-      ))}
-    </div>
-  )
-}
-
-// Sun selector — icon presets (season-scaled) + fine-tune slider.
-
-function SunSelect({ value, onChange, clearSky }) {
-  const levels = sunLevelValues(clearSky)
-  const active = nearestSunLevel(value, clearSky)
-  const inputRef = useRef()
-  return (
-    <div className="slider-group">
-      <div className="slider-header">
-        <span className="slider-label">
-          Sonne
-          <Info>Wie stark trifft die Sonne dich? Direkte Sonne heizt den Körper über die Lufttemperatur hinaus auf; im Schatten zählt nur die Luft. Die Stufen sind an Jahreszeit und Breitengrad angepasst (heutiges Klarhimmel-Maximum: {Math.round(clearSky)} W/m²).</Info>
-        </span>
-        <span className="value-badge">{active.label} · {value} W/m²</span>
-      </div>
-      <div className="sun-select">
-        {levels.map(lvl => (
-          <button
-            key={lvl.label}
-            type="button"
-            className={`sun-btn ${lvl.val === active.val ? 'active' : ''}`}
-            onClick={() => onChange(lvl.val)}
-            title={`${lvl.label} (~${lvl.val} W/m²)`}
-            aria-label={lvl.label}
-          >
-            <span className="sun-icon">{lvl.icon}</span>
-            <span className="sun-cap">{lvl.label}</span>
-          </button>
-        ))}
-      </div>
-      <input
-        ref={inputRef}
-        type="range"
-        min={0} max={1000} step={10} value={value}
         onChange={e => onChange(Number(e.target.value))}
         onPointerDown={e => e.currentTarget.setPointerCapture(e.pointerId)}
         style={{ touchAction: 'pan-y' }}
       />
-      <div className="slider-ends">
-        <span>0 W/m²</span>
-        <span>1000 W/m²</span>
+    </div>
+  )
+}
+
+// Range control with quick presets — used for wind & sun. Consistent layout:
+// header (label + value), preset chips, then a fine-tune slider.
+
+function RangeControl({ label, info, badge, presets, value, onChange, min, max, step }) {
+  const active = nearestPreset(presets, value)
+  return (
+    <div className="control">
+      <div className="control-header">
+        <span className="slider-label">{label}{info && <Info>{info}</Info>}</span>
+        <span className="value-badge">{badge}</span>
       </div>
+      <div className="preset-row">
+        {presets.map(p => (
+          <button
+            key={p.label}
+            type="button"
+            className={`preset-btn ${p.val === active.val ? 'active' : ''}`}
+            onClick={() => onChange(p.val)}
+          >
+            {p.label}
+          </button>
+        ))}
+      </div>
+      <input
+        type="range"
+        min={min} max={max} step={step} value={value}
+        onChange={e => onChange(Number(e.target.value))}
+        onPointerDown={e => e.currentTarget.setPointerCapture(e.pointerId)}
+        style={{ touchAction: 'pan-y' }}
+      />
     </div>
   )
 }
@@ -362,38 +299,31 @@ function GeoBar({ status, location, onRefresh, onSearch, onLocate }) {
   )
 }
 
-// Felt-temperature tab (outdoor: temp + humidity + wind + sun)
+// 24-hour felt-temperature strip — sun & shade series as a compact heatmap.
 
-// 24-hour felt-temperature strip
-
-function ForecastStrip({ hours, met, clo, albedo }) {
+function ForecastStrip({ hours }) {
   if (!hours || hours.length === 0) return null
 
-  const felts = hours.map(h =>
-    comfortAdjust(utci(h.temp, h.humidity, h.wind, meanRadiantTemp(h.temp, h.solar, albedo)), met, clo)
-  )
-  const min = Math.min(...felts)
-  const max = Math.max(...felts)
-  const span = Math.max(1, max - min)
+  const sun   = hours.map(h => utci(h.temp, h.humidity, h.wind, meanRadiantTemp(h.temp, h.solar)))
+  const shade = hours.map(h => utci(h.temp, h.humidity, h.wind, h.temp))
 
   return (
     <div className="forecast">
       <div className="forecast-head">
         <span className="section-name muted">24-Stunden-Verlauf</span>
-        <span className="forecast-sub">gefühlt, in der Sonne</span>
+        <span className="forecast-legend">gefühlt · ☀️ Sonne · 🌳 Schatten</span>
       </div>
       <div className="forecast-strip">
         {hours.map((h, i) => {
-          const felt = felts[i]
-          const hour = h.time.getHours()
-          const barH = 6 + Math.round(((felt - min) / span) * 34) // 6–40 px
+          const hh = String(h.time.getHours()).padStart(2, '0')
+          const night = h.solar <= 10
           return (
             <div className="fc-col" key={i}>
-              <span className="fc-temp">{Math.round(felt)}°</span>
-              <span className={`fc-bar ${colorClass(felt)}`} style={{ height: `${barH}px` }} />
-              <span className="fc-hour">
-                {h.solar > 10 ? '' : '🌙'}{String(hour).padStart(2, '0')}
+              <span className={`fc-cell ${night ? 'fc-night' : colorClass(sun[i])}`}>
+                {night ? '–' : `${Math.round(sun[i])}°`}
               </span>
+              <span className={`fc-cell ${colorClass(shade[i])}`}>{Math.round(shade[i])}°</span>
+              <span className="fc-hour">{night ? '🌙' : ''}{hh}</span>
             </div>
           )
         })}
@@ -420,17 +350,17 @@ function FeltCard({ side, icon, feltTemp, airTemp }) {
 
 function FeltTab({
   outTemp, setOutTemp, outRH, setOutRH, wind, setWind, solar, setSolar,
-  met, setMet, clo, setClo, albedo, setAlbedo,
   hours, geoStatus, lat, lon,
 }) {
   const clearSky  = clearSkyMax(lat, lon)
-  const Tr        = meanRadiantTemp(outTemp, solar, albedo)
-  const feltSun   = comfortAdjust(utci(outTemp, outRH, wind, Tr), met, clo)
-  const feltShade = comfortAdjust(utci(outTemp, outRH, wind, outTemp), met, clo)
+  const Tr        = meanRadiantTemp(outTemp, solar)
+  const feltSun   = utci(outTemp, outRH, wind, Tr)
+  const feltShade = utci(outTemp, outRH, wind, outTemp)
   const dp        = dewPoint(outTemp, outRH)
   const ah        = absoluteHumidity(outTemp, outRH)
-  const actLabel  = nearestPreset(ACT_LEVELS, met).label
-  const cloLabel  = nearestPreset(CLO_LEVELS, clo).label
+
+  const sunActive  = nearestSunLevel(solar, clearSky)
+  const sunPresets = sunLevelValues(clearSky).map(l => ({ val: l.val, label: `${l.icon} ${l.label}` }))
 
   return (
     <>
@@ -444,45 +374,22 @@ function FeltTab({
             <Chip>{outTemp}{' '}°C</Chip>
             <Chip>{outRH}{' '}%</Chip>
             <Chip>{wind}{' '}km/h</Chip>
-            <Chip>{nearestSunLevel(solar, clearSky).icon}</Chip>
+            <Chip>{sunActive.icon}</Chip>
           </span>
         </summary>
         <div className="section-body">
-          <Slider label="Temperatur"       value={outTemp} onChange={setOutTemp} min={-30} max={50}   step={0.5} unit="°C" />
-          <Slider label="Luftfeuchtigkeit" value={outRH}   onChange={setOutRH}   min={0}   max={100}  step={1}   unit="%" />
-          <Slider label="Wind"             value={wind}    onChange={setWind}    min={0}   max={120}  step={1}   unit="km/h" />
-          <PresetRow levels={WIND_LEVELS} value={wind} onChange={setWind} />
-          <SunSelect value={solar} onChange={setSolar} clearSky={clearSky} />
-          <div className="slider-group">
-            <span className="slider-label">
-              Untergrund
-              <Info>Heller Boden reflektiert Sonnenlicht zusätzlich auf den Körper. Schnee und Sand erhöhen die Strahlungstemperatur spürbar.</Info>
-            </span>
-            <PresetRow levels={GROUND_LEVELS} value={albedo} onChange={setAlbedo} />
-          </div>
-        </div>
-      </details>
-
-      <details className="section-card">
-        <summary className="section-summary">
-          <span className="section-name">
-            Persönlich
-            <Info>Standard-UTCI nimmt eine gehende Person (~2,3 MET) in angepasster Kleidung an. Diese Stufen sind eine vereinfachte Personalisierung – kein UTCI-Standard.</Info>
-          </span>
-          <span className="summary-chips">
-            <Chip>{actLabel}</Chip>
-            <Chip>{cloLabel}</Chip>
-          </span>
-        </summary>
-        <div className="section-body">
-          <div className="slider-group">
-            <span className="slider-label">Aktivität</span>
-            <PresetRow levels={ACT_LEVELS} value={met} onChange={setMet} />
-          </div>
-          <div className="slider-group">
-            <span className="slider-label">Kleidung</span>
-            <PresetRow levels={CLO_LEVELS} value={clo} onChange={setClo} />
-          </div>
+          <Slider label="Temperatur"       value={outTemp} onChange={setOutTemp} min={-30} max={50}  step={0.5} unit="°C" />
+          <Slider label="Luftfeuchtigkeit" value={outRH}   onChange={setOutRH}   min={0}   max={100} step={1}   unit="%" />
+          <RangeControl
+            label="Wind" badge={`${wind} km/h`} presets={WIND_LEVELS}
+            value={wind} onChange={setWind} min={0} max={120} step={1}
+          />
+          <RangeControl
+            label="Sonne"
+            info={`Direkte Sonne heizt den Körper über die Lufttemperatur hinaus auf; im Schatten zählt nur die Luft. Stufen an Jahreszeit, Uhrzeit & Standort angepasst (Klarhimmel-Maximum jetzt: ${Math.round(clearSky)} W/m²).`}
+            badge={`${sunActive.icon} ${solar} W/m²`} presets={sunPresets}
+            value={solar} onChange={setSolar} min={0} max={1000} step={10}
+          />
         </div>
       </details>
 
@@ -492,9 +399,7 @@ function FeltTab({
       </section>
 
       <div className="felt-meta">
-        <span>
-          Lufttemp. {fmt1(outTemp)}°C
-        </span>
+        <span>Lufttemp. {fmt1(outTemp)}°C</span>
         <span>
           Strahlungstemp. {fmt1(Tr)}°C
           <Info>Mittlere Strahlungstemperatur: berücksichtigt Sonneneinstrahlung. Im Schatten ≈ Lufttemperatur.</Info>
@@ -505,7 +410,7 @@ function FeltTab({
         </span>
       </div>
 
-      <ForecastStrip hours={hours} met={met} clo={clo} albedo={albedo} />
+      <ForecastStrip hours={hours} />
 
       <details className="section-card formula-card">
         <summary className="section-summary">
@@ -516,8 +421,7 @@ function FeltTab({
           <p><strong>Strahlungstemperatur</strong> – vereinfachte lineare Näherung <code>Tmrt = T + 0.025·I</code> aus der Globalstrahlung I [W/m²].</p>
           <p><strong>Sonnenstufen</strong> – als Anteil des aktuellen Klarhimmel-Maximums (Haurwitz-Modell). Der Sonnenstand wird per NOAA-Algorithmus aus Datum, <em>Uhrzeit</em>, Breiten- und Längengrad berechnet – „Pralle Sonne&ldquo; ist daher im Winter und abends schwächer, nachts null.</p>
           <p><strong>Magnus-Tetens</strong> (Alduchov & Eskridge 1996): <code>e_s = 6.1078·exp(17.625T / (243.04+T))</code>. Taupunkt durch Invertierung. Abs. Feuchte: <code>rho_w = 216.7·e / T_K</code>.</p>
-          <p><strong>Persönlich</strong> – Aktivität (MET) &amp; Kleidung (clo) als vereinfachter, begrenzter Aufschlag auf den UTCI. Kein UTCI-Standard: dort sind Gehen (~2,3 MET) und adaptive Kleidung bereits fix angenommen.</p>
-          <p className="muted">Strahlungsmodell ohne Albedo. Richtwerte, keine Messwerte.</p>
+          <p className="muted">UTCI nimmt eine gehende Person in angepasster Kleidung an. Richtwerte, keine Messwerte.</p>
         </div>
       </details>
     </>
@@ -586,9 +490,6 @@ export default function App() {
   const [outRH,   setOutRH]   = usePersistentState('outRH', 65)
   const [wind,    setWind]    = usePersistentState('wind', 12)
   const [solar,   setSolar]   = usePersistentState('solar', 0)
-  const [met,     setMet]     = usePersistentState('met', 2.3)
-  const [clo,     setClo]     = usePersistentState('clo', 0.7)
-  const [albedo,  setAlbedo]  = usePersistentState('albedo', 0)
   const [inTemp,  setInTemp]  = usePersistentState('inTemp', 24)
   const [inRH,    setInRH]    = usePersistentState('inRH', 55)
 
@@ -701,9 +602,6 @@ export default function App() {
               outRH={outRH}     setOutRH={setOutRH}
               wind={wind}       setWind={setWind}
               solar={solar}     setSolar={setSolar}
-              met={met}         setMet={setMet}
-              clo={clo}         setClo={setClo}
-              albedo={albedo}   setAlbedo={setAlbedo}
               hours={hours}
               geoStatus={geoStatus}
               lat={geoLocation?.lat ?? 50}
