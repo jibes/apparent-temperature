@@ -61,7 +61,7 @@ h1 {
   border: 1px solid var(--border);
 }
 .geo-msg.warn { color: #fcd34d; border-color: #92400e; background: #78350f22; }
-.geo-refresh {
+.geo-icon {
   background: none;
   border: 1px solid var(--border);
   color: var(--muted);
@@ -69,10 +69,27 @@ h1 {
   width: 1.7rem;
   height: 1.7rem;
   cursor: pointer;
-  font-size: 0.9rem;
+  font-size: 0.85rem;
   line-height: 1;
+  flex-shrink: 0;
+  padding: 0;
 }
-.geo-refresh:hover { color: var(--text); border-color: var(--accent); }
+.geo-icon:hover { color: var(--text); border-color: var(--accent); }
+
+.geo-search {
+  flex: 1;
+  min-width: 0;
+  max-width: 220px;
+  background: #1e2235;
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 999px;
+  padding: 0.25rem 0.7rem;
+  font-size: 0.8rem;
+  outline: none;
+}
+.geo-search:focus { border-color: var(--accent); }
+.geo-search::placeholder { color: var(--muted); }
 
 /* ── Tabs ── */
 .tabs {

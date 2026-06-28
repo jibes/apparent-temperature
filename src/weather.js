@@ -18,3 +18,21 @@ export async function fetchCurrentWeather(lat, lon) {
     solar:    Math.round(c.shortwave_radiation ?? 0), // global horizontal W/m²
   }
 }
+
+// Forward geocoding via Nominatim (OpenStreetMap, no key required).
+// Returns { lat, lon, name } for the best match, or null if none found.
+export async function searchLocation(query) {
+  const url =
+    `https://nominatim.openstreetmap.org/search` +
+    `?q=${encodeURIComponent(query)}&format=json&limit=1&addressdetails=1`
+  const res = await fetch(url, { headers: { 'Accept-Language': 'de' } })
+  if (!res.ok) throw new Error(`Nominatim ${res.status}`)
+  const list = await res.json()
+  if (!list.length) return null
+  const hit = list[0]
+  const a = hit.address ?? {}
+  const name =
+    a.city ?? a.town ?? a.village ?? a.county ?? a.state ??
+    hit.display_name?.split(',')[0] ?? query
+  return { lat: parseFloat(hit.lat), lon: parseFloat(hit.lon), name }
+}

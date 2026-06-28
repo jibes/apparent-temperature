@@ -5,7 +5,7 @@ import {
   dewPoint,
   absoluteHumidity,
 } from './formulas.js'
-import { fetchCurrentWeather } from './weather.js'
+import { fetchCurrentWeather, searchLocation } from './weather.js'
 import './App.css'
 
 // helpers
@@ -166,10 +166,50 @@ function VentTable({ Tin, RHin, Tout, RHout }) {
   )
 }
 
-// Geo status
+// Geo status + location search
 
-function GeoBar({ status, location, onRefresh }) {
-  if (status === 'idle') return null
+function GeoBar({ status, location, onRefresh, onSearch, onLocate }) {
+  const [searching, setSearching] = useState(false)
+  const [query, setQuery]         = useState('')
+  const inputRef                  = useRef()
+
+  useEffect(() => {
+    if (searching) inputRef.current?.focus()
+  }, [searching])
+
+  function submit(e) {
+    e.preventDefault()
+    const q = query.trim()
+    if (!q) return
+    onSearch(q)
+    setSearching(false)
+    setQuery('')
+  }
+
+  if (searching) {
+    return (
+      <form className="geo-bar" onSubmit={submit}>
+        <button
+          type="button"
+          className="geo-icon"
+          onClick={() => { setSearching(false); onLocate() }}
+          title="Eigenen Standort verwenden"
+          aria-label="Standort verwenden"
+        >📍</button>
+        <input
+          ref={inputRef}
+          className="geo-search"
+          type="search"
+          value={query}
+          onChange={e => setQuery(e.target.value)}
+          placeholder="Ort suchen…"
+          enterKeyHint="search"
+        />
+        <button type="submit" className="geo-icon" title="Suchen" aria-label="Suchen">🔍</button>
+      </form>
+    )
+  }
+
   return (
     <div className="geo-bar">
       {status === 'loading' || status === 'locating'
@@ -178,10 +218,20 @@ function GeoBar({ status, location, onRefresh }) {
           ? <span className="geo-ok">
               📍{' '}{location.name ?? `${location.lat.toFixed(2)}, ${location.lon.toFixed(2)}`}
             </span>
-          : <span className="geo-msg warn">Standort nicht verfügbar</span>
+          : status === 'searching'
+            ? <span className="geo-msg loading">Suche…</span>
+            : status === 'notfound'
+              ? <span className="geo-msg warn">Ort nicht gefunden</span>
+              : <span className="geo-msg warn">Standort nicht verfügbar</span>
       }
-      {(status === 'ok' || status === 'denied' || status === 'error') && (
-        <button className="geo-refresh" onClick={onRefresh} title="Neu laden">&#8635;</button>
+      <button
+        className="geo-icon"
+        onClick={() => setSearching(true)}
+        title="Ort suchen"
+        aria-label="Ort suchen"
+      >🔍</button>
+      {(status === 'ok' || status === 'denied' || status === 'error' || status === 'notfound') && (
+        <button className="geo-icon" onClick={onRefresh} title="Neu laden" aria-label="Neu laden">&#8635;</button>
       )}
     </div>
   )
@@ -337,6 +387,17 @@ export default function App() {
   const [geoStatus,   setGeoStatus]   = useState('idle')
   const [geoLocation, setGeoLocation] = useState(null)
 
+  // Apply fetched weather to outdoor inputs; prefill indoor temp once on first
+  // load so the Lüften tab starts from a sensible baseline (= outdoor temp).
+  const prefilledRef = useRef(false)
+  function applyWeather(w) {
+    setOutTemp(w.temp); setOutRH(w.humidity); setWind(w.wind); setSolar(w.solar)
+    if (!prefilledRef.current) {
+      setInTemp(w.temp)
+      prefilledRef.current = true
+    }
+  }
+
   async function loadWeather() {
     if (!navigator.geolocation) { setGeoStatus('denied'); return }
     setGeoStatus('loading')
@@ -345,7 +406,7 @@ export default function App() {
         setGeoStatus('locating')
         try {
           const w = await fetchCurrentWeather(coords.latitude, coords.longitude)
-          setOutTemp(w.temp); setOutRH(w.humidity); setWind(w.wind); setSolar(w.solar)
+          applyWeather(w)
           let name = null
           try {
             const r = await fetch(
@@ -363,13 +424,31 @@ export default function App() {
     )
   }
 
+  async function searchWeather(query) {
+    setGeoStatus('searching')
+    try {
+      const loc = await searchLocation(query)
+      if (!loc) { setGeoStatus('notfound'); return }
+      const w = await fetchCurrentWeather(loc.lat, loc.lon)
+      applyWeather(w)
+      setGeoLocation(loc)
+      setGeoStatus('ok')
+    } catch { setGeoStatus('error') }
+  }
+
   useEffect(() => { loadWeather() }, [])
 
   return (
     <div className="app">
       <header>
         <h1>Gefühlte Temperatur</h1>
-        <GeoBar status={geoStatus} location={geoLocation} onRefresh={loadWeather} />
+        <GeoBar
+          status={geoStatus}
+          location={geoLocation}
+          onRefresh={loadWeather}
+          onSearch={searchWeather}
+          onLocate={loadWeather}
+        />
       </header>
 
       <nav className="tabs">
