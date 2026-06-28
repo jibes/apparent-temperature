@@ -71,6 +71,8 @@ describe('fetchHourlyForecast (multi-model median)', () => {
     const out = await fetchHourlyForecast(52, 13, 24)
     expect(out).toHaveLength(24)
     expect(out[0]).toMatchObject({ temp: 20, humidity: 50, wind: 10, solar: 300 })
+    expect(out[0].samples).toHaveLength(2)            // per-model samples kept
+    expect(out[0].samples[0]).toMatchObject({ t: 18, rh: 50, w: 8 })
     expect(out[0].time).toBeInstanceOf(Date)
     expect(out[0].time.getTime() + 3600000).toBeGreaterThan(Date.now())
   })

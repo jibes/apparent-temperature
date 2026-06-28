@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import {
   utci, utciCategory, meanRadiantTemp, clearSkyMax,
   ventilationAssessment,
@@ -279,35 +279,108 @@ function GeoBar({ status, location, onRefresh, onSearch, onLocate }) {
   )
 }
 
-// 24-hour felt-temperature strip — sun & shade series as a compact heatmap.
+// median / min / max of an array (for the confidence band)
+function stats(arr) {
+  const a = arr.filter(x => x != null && !Number.isNaN(x)).sort((x, y) => x - y)
+  if (!a.length) return null
+  const m = Math.floor(a.length / 2)
+  return {
+    med: a.length % 2 ? a[m] : (a[m - 1] + a[m]) / 2,
+    lo: a[0],
+    hi: a[a.length - 1],
+  }
+}
 
-function ForecastStrip({ hours }) {
-  if (!hours || hours.length === 0) return null
+const WEEKDAY = ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa']
 
-  const sun   = hours.map(h => utci(h.temp, h.humidity, h.wind, meanRadiantTemp(h.temp, h.solar)))
-  const shade = hours.map(h => utci(h.temp, h.humidity, h.wind, h.temp))
+// Multi-day felt-temperature chart: shade & sun median lines with a
+// model-spread confidence band each. Width is measured for crisp rendering.
+function ForecastChart({ hours }) {
+  const wrapRef = useRef()
+  const [w, setW] = useState(360)
+  useEffect(() => {
+    if (!wrapRef.current) return
+    const ro = new ResizeObserver(es => setW(es[0].contentRect.width))
+    ro.observe(wrapRef.current)
+    return () => ro.disconnect()
+  }, [])
+
+  const data = useMemo(() => {
+    if (!hours || !hours.length) return null
+    return hours.map(h => {
+      const shade = stats(h.samples.map(s => utci(s.t, s.rh, s.w, s.t)))
+      const sunS  = h.samples.filter(s => s.s != null)
+      const sun   = stats((sunS.length ? sunS : h.samples)
+        .map(s => utci(s.t, s.rh, s.w, meanRadiantTemp(s.t, s.s ?? 0))))
+      return { time: h.time, shade, sun }
+    })
+  }, [hours])
+
+  if (!data) return null
+
+  const H = 175, padL = 24, padR = 8, padT = 10, padB = 24
+  const W = Math.max(280, w)
+  const innerW = W - padL - padR, innerH = H - padT - padB
+  const n = data.length
+
+  let yMin = Infinity, yMax = -Infinity
+  for (const d of data) for (const s of [d.shade, d.sun]) {
+    if (!s) continue
+    yMin = Math.min(yMin, s.lo); yMax = Math.max(yMax, s.hi)
+  }
+  yMin = Math.floor((yMin - 1) / 5) * 5
+  yMax = Math.ceil((yMax + 1) / 5) * 5
+  if (yMax === yMin) yMax = yMin + 5
+
+  const x = i => padL + (n <= 1 ? 0 : (i / (n - 1)) * innerW)
+  const y = v => padT + (1 - (v - yMin) / (yMax - yMin)) * innerH
+
+  const line = key => data.map((d, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)} ${y(d[key].med).toFixed(1)}`).join(' ')
+  const band = key => {
+    const up = data.map((d, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)} ${y(d[key].hi).toFixed(1)}`).join(' ')
+    let dn = ''
+    for (let i = n - 1; i >= 0; i--) dn += `L${x(i).toFixed(1)} ${y(data[i][key].lo).toFixed(1)} `
+    return `${up} ${dn}Z`
+  }
+
+  const yStep = (yMax - yMin) <= 25 ? 5 : 10
+  const yticks = []
+  for (let v = yMin; v <= yMax; v += yStep) yticks.push(v)
+
+  const days = []
+  data.forEach((d, i) => { if (i === 0 || d.time.getHours() === 0) days.push({ i, date: d.time }) })
+
+  const spanDays = Math.round(n / 24)
 
   return (
-    <div className="forecast">
+    <div className="forecast" ref={wrapRef}>
       <div className="forecast-head">
-        <span className="section-name muted">24-Stunden-Verlauf</span>
-        <span className="forecast-legend">gefühlt · ☀️ Sonne · 🌳 Schatten</span>
+        <span className="section-name muted">{spanDays}-Tage-Vorschau</span>
+        <span className="forecast-legend">
+          <i className="lg sun" /> Sonne <i className="lg shade" /> Schatten
+        </span>
       </div>
-      <div className="forecast-strip">
-        {hours.map((h, i) => {
-          const hh = String(h.time.getHours()).padStart(2, '0')
-          const night = h.solar <= 10
-          return (
-            <div className="fc-col" key={i}>
-              <span className={`fc-cell ${night ? 'fc-night' : colorClass(sun[i])}`}>
-                {night ? '–' : `${Math.round(sun[i])}°`}
-              </span>
-              <span className={`fc-cell ${colorClass(shade[i])}`}>{Math.round(shade[i])}°</span>
-              <span className="fc-hour">{night ? '🌙' : ''}{hh}</span>
-            </div>
-          )
-        })}
-      </div>
+      <svg className="fc-svg" viewBox={`0 0 ${W} ${H}`} width={W} height={H} role="img">
+        {yticks.map(v => (
+          <g key={v}>
+            <line x1={padL} x2={W - padR} y1={y(v)} y2={y(v)} className="fc-grid" />
+            <text x={0} y={y(v) + 3} className="fc-ylab">{v}°</text>
+          </g>
+        ))}
+        {days.map(({ i }) => i > 0 && (
+          <line key={i} x1={x(i)} x2={x(i)} y1={padT} y2={padT + innerH} className="fc-daygrid" />
+        ))}
+        <path d={band('shade')} className="fc-band shade" />
+        <path d={band('sun')}   className="fc-band sun" />
+        <path d={line('shade')} className="fc-line shade" />
+        <path d={line('sun')}   className="fc-line sun" />
+        {days.map(({ i, date }) => (
+          <text key={`l${i}`} x={x(i) + 2} y={H - 7} className="fc-xlab">
+            {i === 0 ? 'Heute' : WEEKDAY[date.getDay()]}
+          </text>
+        ))}
+      </svg>
+      <p className="forecast-note">Schattierung = Spanne der {hours[0]?.samples.length ?? 0} Wettermodelle (Unsicherheit).</p>
     </div>
   )
 }
@@ -391,7 +464,7 @@ function FeltTab({
         )}
       </div>
 
-      <ForecastStrip hours={hours} />
+      <ForecastChart hours={hours} />
 
       <details className="section-card formula-card">
         <summary className="section-summary">

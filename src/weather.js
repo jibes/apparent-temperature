@@ -65,31 +65,51 @@ export async function fetchCurrentWeather(lat, lon) {
   }
 }
 
-// Fetches the next `hours` of hourly forecast, consolidated across models.
-// Returns an array of { time: Date, temp, humidity, wind, solar }.
-export async function fetchHourlyForecast(lat, lon, hours = 24) {
+// Fetches up to `hours` of hourly forecast across the full 16-day horizon,
+// keeping the per-model samples so callers can build a confidence band.
+// Each entry: { time, temp, humidity, wind, solar (medians),
+//               samples: [{ t, rh, w, s }] one per model that has data }.
+export async function fetchHourlyForecast(lat, lon, hours = 384) {
   const url =
     `${BASE}?latitude=${lat}&longitude=${lon}` +
     `&hourly=${VARS.join(',')}` +
     `&models=${MODELS.join(',')}` +
-    `&wind_speed_unit=kmh&timezone=auto&forecast_days=2`
+    `&wind_speed_unit=kmh&timezone=auto&forecast_days=16`
 
   const res = await fetch(url)
   if (!res.ok) throw new Error(`Open-Meteo ${res.status}`)
   const h = await res.json().then(d => d.hourly)
 
-  const pickAt = (v, i) => {
-    const vals = MODELS.map(m => h[`${v}_${m}`]?.[i]).filter(x => x != null && !Number.isNaN(x))
-    return vals.length ? vals : (h[v]?.[i] != null ? [h[v][i]] : [])
+  // Build one sample per model (suffixed keys), keeping only complete rows.
+  const sampleAt = i => {
+    const out = []
+    for (const m of MODELS) {
+      const t  = h[`temperature_2m_${m}`]?.[i]
+      const rh = h[`relative_humidity_2m_${m}`]?.[i]
+      const w  = h[`wind_speed_10m_${m}`]?.[i]
+      const s  = h[`shortwave_radiation_${m}`]?.[i]
+      if (t != null && rh != null && w != null) out.push({ t, rh, w, s: s ?? null })
+    }
+    // Fallback to un-suffixed shape (single model).
+    if (!out.length && h.temperature_2m?.[i] != null) {
+      out.push({ t: h.temperature_2m[i], rh: h.relative_humidity_2m?.[i],
+                 w: h.wind_speed_10m?.[i], s: h.shortwave_radiation?.[i] ?? null })
+    }
+    return out
   }
 
-  const all = h.time.map((t, i) => ({
-    time:     new Date(t),
-    temp:     median(pickAt('temperature_2m', i)),
-    humidity: median(pickAt('relative_humidity_2m', i)),
-    wind:     median(pickAt('wind_speed_10m', i)),
-    solar:    median(pickAt('shortwave_radiation', i)) ?? 0,
-  })).filter(e => e.temp != null)
+  const all = h.time.map((t, i) => {
+    const samples = sampleAt(i)
+    if (!samples.length) return null
+    return {
+      time:     new Date(t),
+      samples,
+      temp:     median(samples.map(s => s.t)),
+      humidity: median(samples.map(s => s.rh)),
+      wind:     median(samples.map(s => s.w)),
+      solar:    median(samples.map(s => s.s).filter(x => x != null)) ?? 0,
+    }
+  }).filter(Boolean)
 
   // Start from the current hour (drop past entries), then take `hours`.
   const now = Date.now()
