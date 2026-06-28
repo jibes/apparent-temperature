@@ -3,6 +3,7 @@ import {
   saturationPressure, vaporPressure, dewPoint, absoluteHumidity,
   specificEnthalpy, heatIndex, windChill,
   utci, utciCategory, meanRadiantTemp, clearSkyMax,
+  solarElevation, clearSkyGHI,
 } from './formulas.js'
 
 // ── Psychrometrics (exact, hand-verified) ──────────────────────────────────
@@ -67,20 +68,41 @@ describe('solar / radiant model', () => {
   it('MRT = T + 0.025·I', () => {
     expect(meanRadiantTemp(20, 800)).toBeCloseTo(40, 6)
   })
-  it('clear-sky peaks ≈ 1037 W/m² with sun overhead (lat 23.45°, summer solstice)', () => {
-    const v = clearSkyMax(23.45, new Date('2025-06-21T12:00:00'))
-    expect(v).toBeGreaterThan(1025)
+  it('clear-sky peaks ≈ 1037 W/m² with sun overhead (lat 23.45°, summer solstice noon)', () => {
+    const v = clearSkyMax(23.45, 0, new Date('2025-06-21T12:00:00Z'))
+    expect(v).toBeGreaterThan(1020)
     expect(v).toBeLessThan(1045)
   })
   it('clear-sky much weaker in winter at 50°N', () => {
-    const v = clearSkyMax(50, new Date('2025-12-21T12:00:00'))
+    const v = clearSkyMax(50, 0, new Date('2025-12-21T12:00:00Z'))
     expect(v).toBeGreaterThan(220)
     expect(v).toBeLessThan(290)
   })
   it('summer sun stronger than winter sun at same latitude', () => {
-    const summer = clearSkyMax(50, new Date('2025-06-21T12:00:00'))
-    const winter = clearSkyMax(50, new Date('2025-12-21T12:00:00'))
+    const summer = clearSkyMax(50, 0, new Date('2025-06-21T12:00:00Z'))
+    const winter = clearSkyMax(50, 0, new Date('2025-12-21T12:00:00Z'))
     expect(summer).toBeGreaterThan(winter * 2)
+  })
+  it('zero at night', () => {
+    expect(clearSkyMax(50, 0, new Date('2025-06-21T00:00:00Z'))).toBe(0)
+  })
+})
+
+describe('solar elevation (time of day)', () => {
+  it('≈90° with sun overhead (lat = declination, solar noon)', () => {
+    expect(solarElevation(23.44, 0, new Date('2025-06-21T12:00:00Z'))).toBeGreaterThan(88)
+  })
+  it('below horizon at local midnight', () => {
+    expect(solarElevation(50, 0, new Date('2025-06-21T00:00:00Z'))).toBeLessThan(0)
+  })
+  it('noon sun higher than evening sun', () => {
+    const noon = solarElevation(50, 0, new Date('2025-06-21T12:00:00Z'))
+    const eve  = solarElevation(50, 0, new Date('2025-06-21T17:00:00Z'))
+    expect(noon).toBeGreaterThan(eve)
+  })
+  it('clearSkyGHI rises with elevation', () => {
+    expect(clearSkyGHI(60)).toBeGreaterThan(clearSkyGHI(20))
+    expect(clearSkyGHI(0)).toBe(0)
   })
 })
 

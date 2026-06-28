@@ -113,19 +113,47 @@ export function meanRadiantTemp(Ta, solar) {
   return Ta + 0.025 * Math.max(0, solar)
 }
 
-// Peak clear-sky global irradiance [W/m²] at solar noon for a given latitude
-// and date — the strongest the sun can get that day. Captures the seasonal
-// effect: a low winter sun yields far less radiation than a high summer sun.
-//   declination: Cooper (1969); clear-sky GHI: Haurwitz model.
-export function clearSkyMax(lat, date = new Date()) {
-  const start = new Date(date.getFullYear(), 0, 0)
-  const N = Math.floor((date - start) / 86400000)          // day of year
-  const decl = 23.45 * Math.sin((2 * Math.PI * (284 + N)) / 365) // °
-  const elev = 90 - Math.abs(lat - decl)                   // solar elevation at noon
-  if (elev <= 0) return 0
-  const cosZ = Math.cos(((90 - elev) * Math.PI) / 180)     // cos(zenith)
+// Solar elevation angle [°] for a place and instant (NOAA algorithm).
+// lon is east-positive degrees; date is interpreted in UTC.
+export function solarElevation(lat, lon, date = new Date()) {
+  const rad = Math.PI / 180
+  const startUTC = Date.UTC(date.getUTCFullYear(), 0, 0)
+  const N = (Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()) - startUTC) / 86400000
+  const hUTC = date.getUTCHours() + date.getUTCMinutes() / 60 + date.getUTCSeconds() / 3600
+
+  const gamma = ((2 * Math.PI) / 365) * (N - 1 + (hUTC - 12) / 24) // fractional year [rad]
+
+  const eqtime = 229.18 * (0.000075
+    + 0.001868 * Math.cos(gamma)    - 0.032077 * Math.sin(gamma)
+    - 0.014615 * Math.cos(2 * gamma) - 0.040849 * Math.sin(2 * gamma)) // minutes
+
+  const decl = 0.006918
+    - 0.399912 * Math.cos(gamma)    + 0.070257 * Math.sin(gamma)
+    - 0.006758 * Math.cos(2 * gamma) + 0.000907 * Math.sin(2 * gamma)
+    - 0.002697 * Math.cos(3 * gamma) + 0.00148  * Math.sin(3 * gamma) // radians
+
+  const tst = hUTC * 60 + eqtime + 4 * lon  // true solar time [min]
+  const ha  = (tst / 4 - 180) * rad         // hour angle [rad]
+
+  const cosZ = Math.sin(lat * rad) * Math.sin(decl)
+             + Math.cos(lat * rad) * Math.cos(decl) * Math.cos(ha)
+  return 90 - Math.acos(Math.min(1, Math.max(-1, cosZ))) / rad
+}
+
+// Clear-sky global horizontal irradiance [W/m²] from solar elevation
+// (Haurwitz model). Returns 0 when the sun is below the horizon.
+export function clearSkyGHI(elevDeg) {
+  if (elevDeg <= 0) return 0
+  const cosZ = Math.cos(((90 - elevDeg) * Math.PI) / 180)
   if (cosZ <= 0) return 0
   return Math.max(0, 1098 * cosZ * Math.exp(-0.057 / cosZ))
+}
+
+// Current clear-sky ceiling [W/m²] for a place & instant — the strongest the
+// sun can get *right now*. Captures both season (declination) and time of day
+// (hour angle): low morning/evening sun is weak, night is zero.
+export function clearSkyMax(lat, lon = 10, date = new Date()) {
+  return clearSkyGHI(solarElevation(lat, lon, date))
 }
 
 export function utci(Ta, RH, va_kmh, Tr = null) {

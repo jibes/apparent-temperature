@@ -349,9 +349,9 @@ function FeltCard({ side, icon, feltTemp, airTemp }) {
 
 function FeltTab({
   outTemp, setOutTemp, outRH, setOutRH, wind, setWind, solar, setSolar,
-  geoStatus, lat,
+  geoStatus, lat, lon,
 }) {
-  const clearSky  = clearSkyMax(lat)
+  const clearSky  = clearSkyMax(lat, lon)
   const Tr        = meanRadiantTemp(outTemp, solar)
   const feltSun   = utci(outTemp, outRH, wind, Tr)
   const feltShade = utci(outTemp, outRH, wind, outTemp)
@@ -408,7 +408,7 @@ function FeltTab({
         <div className="section-body formula-body">
           <p><strong>UTCI</strong> – Bröde et al. (2012). Universeller thermischer Klimaindex: 210-Term-Polynom 6. Grades in Lufttemperatur, Windgeschwindigkeit, mittlerer Strahlungstemperatur und Dampfdruck. Windlimit: 0.5–17 m/s.</p>
           <p><strong>Strahlungstemperatur</strong> – vereinfachte lineare Näherung <code>Tmrt = T + 0.025·I</code> aus der Globalstrahlung I [W/m²].</p>
-          <p><strong>Sonnenstufen</strong> – als Anteil des tagesaktuellen Klarhimmel-Maximums (Haurwitz-Modell, Sonnenstand aus Datum &amp; Breitengrad). Dadurch ist „Pralle Sonne&ldquo; im Winter schwächer als im Sommer.</p>
+          <p><strong>Sonnenstufen</strong> – als Anteil des aktuellen Klarhimmel-Maximums (Haurwitz-Modell). Der Sonnenstand wird per NOAA-Algorithmus aus Datum, <em>Uhrzeit</em>, Breiten- und Längengrad berechnet – „Pralle Sonne&ldquo; ist daher im Winter und abends schwächer, nachts null.</p>
           <p><strong>Magnus-Tetens</strong> (Alduchov & Eskridge 1996): <code>e_s = 6.1078·exp(17.625T / (243.04+T))</code>. Taupunkt durch Invertierung. Abs. Feuchte: <code>rho_w = 216.7·e / T_K</code>.</p>
           <p className="muted">Strahlungsmodell ohne Sonnenstand, Albedo und Kleidung – Richtwert, kein Messwert. Ohne Körperaktivität und CLO-Wert.</p>
         </div>
@@ -569,6 +569,7 @@ export default function App() {
               solar={solar}     setSolar={setSolar}
               geoStatus={geoStatus}
               lat={geoLocation?.lat ?? 50}
+              lon={geoLocation?.lon ?? 10}
             />
           : <LueftenTab
               inTemp={inTemp}   setInTemp={setInTemp}
