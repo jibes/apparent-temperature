@@ -297,7 +297,9 @@ const WEEKDAY = ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa']
 // model-spread confidence band each. Width is measured for crisp rendering.
 function ForecastChart({ hours }) {
   const wrapRef = useRef()
+  const svgRef = useRef()
   const [w, setW] = useState(360)
+  const [selIdx, setSelIdx] = useState(0)
   useEffect(() => {
     if (!wrapRef.current) return
     const ro = new ResizeObserver(es => setW(es[0].contentRect.width))
@@ -312,7 +314,8 @@ function ForecastChart({ hours }) {
       const sunS  = h.samples.filter(s => s.s != null)
       const sun   = stats((sunS.length ? sunS : h.samples)
         .map(s => utci(s.t, s.rh, s.w, meanRadiantTemp(s.t, s.s ?? 0))))
-      return { time: h.time, shade, sun }
+      const air   = stats(h.samples.map(s => s.t))
+      return { time: h.time, shade, sun, air: air?.med, models: h.samples.length }
     })
   }, [hours])
 
@@ -353,9 +356,21 @@ function ForecastChart({ hours }) {
   const days = []
   data.forEach((d, i) => { if (i === 0 || d.time.getHours() === 0) days.push({ i, date: d.time }) })
   const sixes = []
-  data.forEach((d, i) => { if (i > 0 && d.time.getHours() % 6 === 0 && d.time.getHours() !== 0) sixes.push(i) })
+  data.forEach((d, i) => { if (d.time.getHours() % 6 === 0 && d.time.getHours() !== 0) sixes.push(i) })
 
   const spanDays = Math.round(n / 24)
+  const si  = Math.min(selIdx, n - 1)
+  const sel = data[si]
+  const r1  = v => Math.round(v)
+  const selDate = sel.time
+  const dateStr = `${WEEKDAY[selDate.getDay()]} ${selDate.getDate()}.${selDate.getMonth() + 1}.`
+  const hhmm = `${String(selDate.getHours()).padStart(2, '0')}:00`
+
+  function pick(e) {
+    const rect = svgRef.current.getBoundingClientRect()
+    let idx = Math.round((e.clientX - rect.left - 4) / pxPerHour)
+    setSelIdx(Math.max(0, Math.min(n - 1, idx)))
+  }
 
   return (
     <div className="forecast" ref={wrapRef}>
@@ -365,6 +380,14 @@ function ForecastChart({ hours }) {
           <i className="lg sun" /> Sonne <i className="lg shade" /> Schatten
         </span>
       </div>
+
+      <div className="fc-readout">
+        <span className="fc-rtime">{dateStr} {hhmm}</span>
+        <span className="fc-rval sun">☀️ {r1(sel.sun.med)}° <em>{r1(sel.sun.lo)}–{r1(sel.sun.hi)}</em></span>
+        <span className="fc-rval shade">🌳 {r1(sel.shade.med)}° <em>{r1(sel.shade.lo)}–{r1(sel.shade.hi)}</em></span>
+        <span className="fc-rmodels">{sel.models}{' '}Mod.</span>
+      </div>
+
       <div className="fc-plot">
         <svg className="fc-axis" width={axisW} height={H} viewBox={`0 0 ${axisW} ${H}`} aria-hidden="true">
           {yticks.map(v => (
@@ -372,7 +395,13 @@ function ForecastChart({ hours }) {
           ))}
         </svg>
         <div className="fc-scroll">
-          <svg width={chartW} height={H} viewBox={`0 0 ${chartW} ${H}`} role="img">
+          <svg
+            ref={svgRef}
+            width={chartW} height={H} viewBox={`0 0 ${chartW} ${H}`} role="img"
+            onPointerDown={pick}
+            onPointerMove={e => { if (e.buttons) pick(e) }}
+            style={{ touchAction: 'pan-x' }}
+          >
             {yticks.map(v => (
               <line key={v} x1={0} x2={chartW} y1={y(v)} y2={y(v)} className="fc-grid" />
             ))}
@@ -386,6 +415,18 @@ function ForecastChart({ hours }) {
             <path d={band('sun')}   className="fc-band sun" />
             <path d={line('shade')} className="fc-line shade" />
             <path d={line('sun')}   className="fc-line sun" />
+
+            {/* selection cursor */}
+            <line x1={x(si)} x2={x(si)} y1={padT} y2={padT + innerH} className="fc-cursor" />
+            <circle cx={x(si)} cy={y(sel.sun.med)}   r="3.5" className="fc-dot sun" />
+            <circle cx={x(si)} cy={y(sel.shade.med)} r="3.5" className="fc-dot shade" />
+
+            {/* hour labels at 6h marks, weekday/date at midnight */}
+            {sixes.map(i => (
+              <text key={`h${i}`} x={x(i)} y={H - 7} className="fc-hourlab" textAnchor="middle">
+                {String(data[i].time.getHours()).padStart(2, '0')}
+              </text>
+            ))}
             {days.map(({ i, date }) => (
               <text key={`l${i}`} x={x(i) + 3} y={H - 7} className="fc-xlab">
                 {i === 0 ? 'Heute' : WEEKDAY[date.getDay()]}
@@ -394,7 +435,7 @@ function ForecastChart({ hours }) {
           </svg>
         </div>
       </div>
-      <p className="forecast-note">Schattierung = Spanne der {hours[0]?.samples.length ?? 0} Wettermodelle (Unsicherheit).</p>
+      <p className="forecast-note">Tippen wählt einen Zeitpunkt. Schattierung = Spanne der Wettermodelle (Unsicherheit).</p>
     </div>
   )
 }
