@@ -318,9 +318,9 @@ function ForecastChart({ hours }) {
 
   if (!data) return null
 
-  const H = 175, padL = 24, padR = 8, padT = 10, padB = 24
-  const W = Math.max(280, w)
-  const innerW = W - padL - padR, innerH = H - padT - padB
+  const H = 175, padT = 10, padB = 24
+  const axisW = 26, padR = 10
+  const innerH = H - padT - padB
   const n = data.length
 
   let yMin = Infinity, yMax = -Infinity
@@ -332,7 +332,10 @@ function ForecastChart({ hours }) {
   yMax = Math.ceil((yMax + 1) / 5) * 5
   if (yMax === yMin) yMax = yMin + 5
 
-  const x = i => padL + (n <= 1 ? 0 : (i / (n - 1)) * innerW)
+  // ~one day per visible plot width on a phone.
+  const pxPerHour = Math.max(6, (w - axisW) / 24)
+  const chartW = Math.round((n - 1) * pxPerHour + padR + 4)
+  const x = i => 4 + i * pxPerHour
   const y = v => padT + (1 - (v - yMin) / (yMax - yMin)) * innerH
 
   const line = key => data.map((d, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)} ${y(d[key].med).toFixed(1)}`).join(' ')
@@ -349,6 +352,8 @@ function ForecastChart({ hours }) {
 
   const days = []
   data.forEach((d, i) => { if (i === 0 || d.time.getHours() === 0) days.push({ i, date: d.time }) })
+  const sixes = []
+  data.forEach((d, i) => { if (i > 0 && d.time.getHours() % 6 === 0 && d.time.getHours() !== 0) sixes.push(i) })
 
   const spanDays = Math.round(n / 24)
 
@@ -360,26 +365,35 @@ function ForecastChart({ hours }) {
           <i className="lg sun" /> Sonne <i className="lg shade" /> Schatten
         </span>
       </div>
-      <svg className="fc-svg" viewBox={`0 0 ${W} ${H}`} width={W} height={H} role="img">
-        {yticks.map(v => (
-          <g key={v}>
-            <line x1={padL} x2={W - padR} y1={y(v)} y2={y(v)} className="fc-grid" />
-            <text x={0} y={y(v) + 3} className="fc-ylab">{v}°</text>
-          </g>
-        ))}
-        {days.map(({ i }) => i > 0 && (
-          <line key={i} x1={x(i)} x2={x(i)} y1={padT} y2={padT + innerH} className="fc-daygrid" />
-        ))}
-        <path d={band('shade')} className="fc-band shade" />
-        <path d={band('sun')}   className="fc-band sun" />
-        <path d={line('shade')} className="fc-line shade" />
-        <path d={line('sun')}   className="fc-line sun" />
-        {days.map(({ i, date }) => (
-          <text key={`l${i}`} x={x(i) + 2} y={H - 7} className="fc-xlab">
-            {i === 0 ? 'Heute' : WEEKDAY[date.getDay()]}
-          </text>
-        ))}
-      </svg>
+      <div className="fc-plot">
+        <svg className="fc-axis" width={axisW} height={H} viewBox={`0 0 ${axisW} ${H}`} aria-hidden="true">
+          {yticks.map(v => (
+            <text key={v} x={axisW - 3} y={y(v) + 3} className="fc-ylab" textAnchor="end">{v}°</text>
+          ))}
+        </svg>
+        <div className="fc-scroll">
+          <svg width={chartW} height={H} viewBox={`0 0 ${chartW} ${H}`} role="img">
+            {yticks.map(v => (
+              <line key={v} x1={0} x2={chartW} y1={y(v)} y2={y(v)} className="fc-grid" />
+            ))}
+            {sixes.map(i => (
+              <line key={`s${i}`} x1={x(i)} x2={x(i)} y1={padT} y2={padT + innerH} className="fc-hourgrid" />
+            ))}
+            {days.map(({ i }) => i > 0 && (
+              <line key={i} x1={x(i)} x2={x(i)} y1={padT} y2={padT + innerH} className="fc-daygrid" />
+            ))}
+            <path d={band('shade')} className="fc-band shade" />
+            <path d={band('sun')}   className="fc-band sun" />
+            <path d={line('shade')} className="fc-line shade" />
+            <path d={line('sun')}   className="fc-line sun" />
+            {days.map(({ i, date }) => (
+              <text key={`l${i}`} x={x(i) + 3} y={H - 7} className="fc-xlab">
+                {i === 0 ? 'Heute' : WEEKDAY[date.getDay()]}
+              </text>
+            ))}
+          </svg>
+        </div>
+      </div>
       <p className="forecast-note">Schattierung = Spanne der {hours[0]?.samples.length ?? 0} Wettermodelle (Unsicherheit).</p>
     </div>
   )

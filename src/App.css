@@ -495,9 +495,20 @@ input[type='range'] {
 .forecast-legend .lg.sun   { background: #fbbf24; }
 .forecast-legend .lg.shade { background: #7dd3fc; }
 
-.fc-svg { display: block; width: 100%; height: auto; }
-.fc-grid    { stroke: var(--border); stroke-width: 1; opacity: 0.5; }
-.fc-daygrid { stroke: var(--border); stroke-width: 1; opacity: 0.35; stroke-dasharray: 2 3; }
+.fc-plot { display: flex; align-items: stretch; }
+.fc-axis { flex: 0 0 auto; display: block; }
+.fc-scroll {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+  -webkit-overflow-scrolling: touch;
+}
+.fc-scroll svg { display: block; }
+.fc-grid     { stroke: var(--border); stroke-width: 1; opacity: 0.5; }
+.fc-daygrid  { stroke: var(--border); stroke-width: 1; opacity: 0.45; stroke-dasharray: 2 3; }
+.fc-hourgrid { stroke: var(--border); stroke-width: 1; opacity: 0.2; }
 .fc-ylab, .fc-xlab {
   fill: var(--muted);
   font-size: 9px;
