@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { fetchHourlyForecast, searchLocation } from './weather.js'
+import { fetchCurrentWeather, fetchHourlyForecast, searchLocation } from './weather.js'
 
 afterEach(() => { vi.restoreAllMocks() })
 
@@ -9,28 +9,69 @@ function mockFetch(payload, ok = true, status = 200) {
   }))
 }
 
-describe('fetchHourlyForecast', () => {
-  it('shapes and slices hourly data from the current hour', async () => {
-    // Build 48 hours starting 3h ago so "now" falls mid-array.
+describe('fetchCurrentWeather (multi-model median)', () => {
+  it('takes the per-variable median across models', async () => {
+    mockFetch({
+      current: {
+        // three models with different values → median is robust to the outlier
+        temperature_2m_icon_seamless: 20,
+        temperature_2m_gfs_seamless:  22,
+        temperature_2m_ecmwf_ifs025:  30, // outlier
+        relative_humidity_2m_icon_seamless: 50,
+        relative_humidity_2m_gfs_seamless:  60,
+        relative_humidity_2m_ecmwf_ifs025:  55,
+        wind_speed_10m_icon_seamless: 10,
+        wind_speed_10m_gfs_seamless:  12,
+        wind_speed_10m_ecmwf_ifs025:  20,
+        shortwave_radiation_icon_seamless: 300,
+        shortwave_radiation_gfs_seamless:  320,
+        shortwave_radiation_ecmwf_ifs025:  280,
+      },
+    })
+    const w = await fetchCurrentWeather(52, 13)
+    expect(w.temp).toBe(22)      // median(20,22,30) = 22, not the 24 a mean would give
+    expect(w.humidity).toBe(55)
+    expect(w.wind).toBe(12)
+    expect(w.solar).toBe(300)
+    expect(w.sources).toBe(3)
+    expect(w.spread.temp).toBe(10) // 30 − 20
+  })
+
+  it('throws when no model returned data', async () => {
+    mockFetch({ current: {} })
+    await expect(fetchCurrentWeather(0, 0)).rejects.toThrow(/no model data/)
+  })
+
+  it('throws on HTTP error', async () => {
+    mockFetch({}, false, 503)
+    await expect(fetchCurrentWeather(0, 0)).rejects.toThrow(/503/)
+  })
+})
+
+describe('fetchHourlyForecast (multi-model median)', () => {
+  it('medians each hour and slices from the current hour', async () => {
     const base = Date.now() - 3 * 3600000
     const times = Array.from({ length: 48 }, (_, i) =>
       new Date(base + i * 3600000).toISOString()
     )
+    const fill = v => times.map(() => v)
     mockFetch({
       hourly: {
         time: times,
-        temperature_2m:        times.map(() => 20),
-        relative_humidity_2m:  times.map(() => 50),
-        wind_speed_10m:        times.map(() => 10),
-        shortwave_radiation:   times.map(() => 300),
+        temperature_2m_icon_seamless: fill(18),
+        temperature_2m_gfs_seamless:  fill(22),
+        relative_humidity_2m_icon_seamless: fill(50),
+        relative_humidity_2m_gfs_seamless:  fill(50),
+        wind_speed_10m_icon_seamless: fill(8),
+        wind_speed_10m_gfs_seamless:  fill(12),
+        shortwave_radiation_icon_seamless: fill(200),
+        shortwave_radiation_gfs_seamless:  fill(400),
       },
     })
-
     const out = await fetchHourlyForecast(52, 13, 24)
     expect(out).toHaveLength(24)
     expect(out[0]).toMatchObject({ temp: 20, humidity: 50, wind: 10, solar: 300 })
     expect(out[0].time).toBeInstanceOf(Date)
-    // First returned hour should be the current hour or later, not the past.
     expect(out[0].time.getTime() + 3600000).toBeGreaterThan(Date.now())
   })
 

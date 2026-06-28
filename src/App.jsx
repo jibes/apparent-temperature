@@ -330,7 +330,7 @@ function FeltCard({ side, icon, feltTemp, airTemp }) {
 
 function FeltTab({
   outTemp, setOutTemp, outRH, setOutRH, wind, setWind,
-  hours, geoStatus, lat, lon,
+  hours, wxMeta, geoStatus, lat, lon,
 }) {
   const clearSky  = clearSkyMax(lat, lon)   // full-sun ceiling for now & place
   const TrSun     = meanRadiantTemp(outTemp, clearSky)
@@ -383,6 +383,12 @@ function FeltTab({
           Taupunkt {fmt1(dp)}°C · {fmt1(ah)} g/m³
           <Info>Taupunkt und absolute Feuchte der Aussenluft.</Info>
         </span>
+        {wxMeta && wxMeta.sources > 1 && (
+          <span>
+            {wxMeta.sources} Modelle · ±{fmt1(wxMeta.spread.temp / 2)}°C
+            <Info>Konsens aus {wxMeta.sources} Wettermodellen (Median je Größe). Die Spanne zeigt die Unsicherheit – je grösser, desto unsicherer die Vorhersage.</Info>
+          </span>
+        )}
       </div>
 
       <ForecastStrip hours={hours} />
@@ -470,12 +476,14 @@ export default function App() {
   const [geoStatus,   setGeoStatus]   = useState('idle')
   const [geoLocation, setGeoLocation] = usePersistentState('geoLocation', null)
   const [hours,       setHours]       = useState(null)
+  const [wxMeta,      setWxMeta]      = useState(null) // { sources, spread }
 
   // Apply fetched weather to outdoor inputs; prefill indoor temp once on first
   // load so the Lüften tab starts from a sensible baseline (= outdoor temp).
   const prefilledRef = useRef(false)
   function applyWeather(w) {
     setOutTemp(w.temp); setOutRH(w.humidity); setWind(w.wind)
+    if (w.sources) setWxMeta({ sources: w.sources, spread: w.spread })
     if (!prefilledRef.current) {
       setInTemp(w.temp)
       prefilledRef.current = true
@@ -576,6 +584,7 @@ export default function App() {
               outRH={outRH}     setOutRH={setOutRH}
               wind={wind}       setWind={setWind}
               hours={hours}
+              wxMeta={geoStatus === 'ok' ? wxMeta : null}
               geoStatus={geoStatus}
               lat={geoLocation?.lat ?? 50}
               lon={geoLocation?.lon ?? 10}

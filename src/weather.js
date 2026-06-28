@@ -1,44 +1,96 @@
-// Fetches current weather from Open-Meteo (no API key required).
-// Returns { temp, humidity, wind, solar } or throws on error.
+// Weather from Open-Meteo (no API key, CORS-friendly). To get a multi-source
+// consensus we request several global models in one call and take the
+// per-variable MEDIAN — robust to a single model outlier. The model spread is
+// returned as a free uncertainty estimate.
+const BASE = 'https://api.open-meteo.com/v1/forecast'
+const MODELS = [
+  'icon_seamless',      // DWD (Germany)
+  'gfs_seamless',       // NOAA (USA)
+  'ecmwf_ifs025',       // ECMWF (Europe)
+  'gem_seamless',       // Environment Canada
+  'meteofrance_seamless', // Météo-France
+]
+const VARS = ['temperature_2m', 'relative_humidity_2m', 'wind_speed_10m', 'shortwave_radiation']
+
+function median(xs) {
+  const a = xs.filter(v => v != null && !Number.isNaN(v)).sort((x, y) => x - y)
+  if (!a.length) return null
+  const m = Math.floor(a.length / 2)
+  return a.length % 2 ? a[m] : (a[m - 1] + a[m]) / 2
+}
+
+function spread(xs) {
+  const a = xs.filter(v => v != null && !Number.isNaN(v))
+  if (a.length < 2) return 0
+  return Math.max(...a) - Math.min(...a)
+}
+
+// Fetches current weather, consolidated across models.
+// Returns { temp, humidity, wind, solar, sources, spread:{temp,humidity,wind} }.
 export async function fetchCurrentWeather(lat, lon) {
   const url =
-    `https://api.open-meteo.com/v1/forecast` +
-    `?latitude=${lat}&longitude=${lon}` +
-    `&current=temperature_2m,relative_humidity_2m,wind_speed_10m,shortwave_radiation` +
+    `${BASE}?latitude=${lat}&longitude=${lon}` +
+    `&current=${VARS.join(',')}` +
+    `&models=${MODELS.join(',')}` +
     `&wind_speed_unit=kmh&timezone=auto`
 
   const res = await fetch(url)
   if (!res.ok) throw new Error(`Open-Meteo ${res.status}`)
-  const data = await res.json()
-  const c = data.current
+  const c = (await res.json()).current
+
+  // With multiple models, keys are suffixed: temperature_2m_icon_seamless …
+  // Fall back to the un-suffixed key if a single model / older shape is returned.
+  const pick = v => {
+    const vals = MODELS.map(m => c[`${v}_${m}`]).filter(x => x != null && !Number.isNaN(x))
+    return vals.length ? vals : (c[v] != null ? [c[v]] : [])
+  }
+  const temps = pick('temperature_2m')
+  const rhs   = pick('relative_humidity_2m')
+  const winds = pick('wind_speed_10m')
+  const sols  = pick('shortwave_radiation')
+
+  if (!temps.length) throw new Error('Open-Meteo: no model data')
+
   return {
-    temp:     Math.round(c.temperature_2m * 2) / 2,   // round to 0.5 step
-    humidity: Math.round(c.relative_humidity_2m),
-    wind:     Math.round(c.wind_speed_10m),
-    solar:    Math.round(c.shortwave_radiation ?? 0), // global horizontal W/m²
+    temp:     Math.round(median(temps) * 2) / 2,
+    humidity: Math.round(median(rhs)),
+    wind:     Math.round(median(winds)),
+    solar:    Math.round(median(sols) ?? 0),
+    sources:  temps.length,
+    spread: {
+      temp:     spread(temps),
+      humidity: spread(rhs),
+      wind:     spread(winds),
+    },
   }
 }
 
-// Fetches the next `hours` of hourly forecast from Open-Meteo.
+// Fetches the next `hours` of hourly forecast, consolidated across models.
 // Returns an array of { time: Date, temp, humidity, wind, solar }.
 export async function fetchHourlyForecast(lat, lon, hours = 24) {
   const url =
-    `https://api.open-meteo.com/v1/forecast` +
-    `?latitude=${lat}&longitude=${lon}` +
-    `&hourly=temperature_2m,relative_humidity_2m,wind_speed_10m,shortwave_radiation` +
+    `${BASE}?latitude=${lat}&longitude=${lon}` +
+    `&hourly=${VARS.join(',')}` +
+    `&models=${MODELS.join(',')}` +
     `&wind_speed_unit=kmh&timezone=auto&forecast_days=2`
 
   const res = await fetch(url)
   if (!res.ok) throw new Error(`Open-Meteo ${res.status}`)
-  const data = await res.json()
-  const h = data.hourly
+  const h = await res.json().then(d => d.hourly)
+
+  const pickAt = (v, i) => {
+    const vals = MODELS.map(m => h[`${v}_${m}`]?.[i]).filter(x => x != null && !Number.isNaN(x))
+    return vals.length ? vals : (h[v]?.[i] != null ? [h[v][i]] : [])
+  }
+
   const all = h.time.map((t, i) => ({
     time:     new Date(t),
-    temp:     h.temperature_2m[i],
-    humidity: h.relative_humidity_2m[i],
-    wind:     h.wind_speed_10m[i],
-    solar:    h.shortwave_radiation[i] ?? 0,
-  }))
+    temp:     median(pickAt('temperature_2m', i)),
+    humidity: median(pickAt('relative_humidity_2m', i)),
+    wind:     median(pickAt('wind_speed_10m', i)),
+    solar:    median(pickAt('shortwave_radiation', i)) ?? 0,
+  })).filter(e => e.temp != null)
+
   // Start from the current hour (drop past entries), then take `hours`.
   const now = Date.now()
   const startIdx = Math.max(0, all.findIndex(e => e.time.getTime() + 3600000 > now))
