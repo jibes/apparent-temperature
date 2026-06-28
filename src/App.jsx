@@ -12,6 +12,20 @@ import './App.css'
 
 function fmt1(n) { return (Math.round(n * 10) / 10).toFixed(1) }
 
+// State that survives reloads via localStorage.
+function usePersistentState(key, initial) {
+  const [val, setVal] = useState(() => {
+    try {
+      const raw = localStorage.getItem(key)
+      return raw != null ? JSON.parse(raw) : initial
+    } catch { return initial }
+  })
+  useEffect(() => {
+    try { localStorage.setItem(key, JSON.stringify(val)) } catch {}
+  }, [key, val])
+  return [val, setVal]
+}
+
 function colorClass(t) {
   if (t >= 40) return 'very-hot'
   if (t >= 32) return 'hot'
@@ -566,20 +580,20 @@ function LueftenTab({ inTemp, setInTemp, inRH, setInRH, outTemp, setOutTemp, out
 // App
 
 export default function App() {
-  const [tab, setTab] = useState('felt')
+  const [tab, setTab] = usePersistentState('tab', 'felt')
 
-  const [outTemp, setOutTemp] = useState(28)
-  const [outRH,   setOutRH]   = useState(65)
-  const [wind,    setWind]    = useState(12)
-  const [solar,   setSolar]   = useState(0)
-  const [met,     setMet]     = useState(2.3)
-  const [clo,     setClo]     = useState(0.7)
-  const [albedo,  setAlbedo]  = useState(0)
-  const [inTemp,  setInTemp]  = useState(24)
-  const [inRH,    setInRH]    = useState(55)
+  const [outTemp, setOutTemp] = usePersistentState('outTemp', 28)
+  const [outRH,   setOutRH]   = usePersistentState('outRH', 65)
+  const [wind,    setWind]    = usePersistentState('wind', 12)
+  const [solar,   setSolar]   = usePersistentState('solar', 0)
+  const [met,     setMet]     = usePersistentState('met', 2.3)
+  const [clo,     setClo]     = usePersistentState('clo', 0.7)
+  const [albedo,  setAlbedo]  = usePersistentState('albedo', 0)
+  const [inTemp,  setInTemp]  = usePersistentState('inTemp', 24)
+  const [inRH,    setInRH]    = usePersistentState('inRH', 55)
 
   const [geoStatus,   setGeoStatus]   = useState('idle')
-  const [geoLocation, setGeoLocation] = useState(null)
+  const [geoLocation, setGeoLocation] = usePersistentState('geoLocation', null)
   const [hours,       setHours]       = useState(null)
 
   // Apply fetched weather to outdoor inputs; prefill indoor temp once on first
@@ -620,6 +634,18 @@ export default function App() {
     )
   }
 
+  // Refetch fresh weather for a known location (no geolocation prompt).
+  async function refetchFor(la, lo, name) {
+    setGeoStatus('locating')
+    try {
+      const w = await fetchCurrentWeather(la, lo)
+      applyWeather(w)
+      fetchHourlyForecast(la, lo).then(setHours).catch(() => {})
+      setGeoLocation({ lat: la, lon: lo, name })
+      setGeoStatus('ok')
+    } catch { setGeoStatus('error') }
+  }
+
   async function searchWeather(query) {
     setGeoStatus('searching')
     try {
@@ -633,7 +659,16 @@ export default function App() {
     } catch { setGeoStatus('error') }
   }
 
-  useEffect(() => { loadWeather() }, [])
+  // On mount: if we have a saved location, refresh its weather silently
+  // (keeping persisted personal/indoor inputs); otherwise ask for GPS.
+  useEffect(() => {
+    if (geoLocation && geoLocation.lat != null) {
+      prefilledRef.current = true // don't overwrite restored indoor temp
+      refetchFor(geoLocation.lat, geoLocation.lon, geoLocation.name)
+    } else {
+      loadWeather()
+    }
+  }, [])
 
   return (
     <div className="app">
