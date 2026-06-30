@@ -188,9 +188,9 @@ h1 {
 }
 
 .chip.felt {
-  color: #fbbf24;
-  border-color: #92400e;
-  background: #78350f22;
+  color: var(--text);
+  border-color: var(--border);
+  background: #20243c;
 }
 
 .vent-window {

@@ -520,8 +520,8 @@ function FeltTab({
         <summary className="section-summary">
           <span className="section-name">Details</span>
           <span className="summary-chips">
-            <Chip>Luft {fmt1(outTemp)}°C</Chip>
             <Chip>Tp {fmt1(dp)}°C</Chip>
+            <Chip>☀️ +{fmt1(feltSun - feltShade)}°</Chip>
             {wxMeta && wxMeta.sources > 1 && <Chip>{wxMeta.sources} Mod.</Chip>}
           </span>
         </summary>
