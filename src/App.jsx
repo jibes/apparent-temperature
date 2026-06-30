@@ -575,28 +575,38 @@ function FeltTab({
   )
 }
 
-// Best dehumidifying ventilation window in the next 24 h: a run of hours where
-// outdoor air is meaningfully drier than indoor (≥0.5 g/m³) and won't condense
-// (outdoor dew point below indoor temp). Returns the driest such run, or null.
+// Thermal-comfort zone (ASHRAE/DIN comfort box). Penalty = how far a (T, RH)
+// state lies outside it, in °C-equivalent units (RH weighted ~0.1°C per %).
+const COMFORT = { tLo: 20, tHi: 24, rhLo: 40, rhHi: 60 }
+function comfortPenalty(T, RH) {
+  const tp = T < COMFORT.tLo ? COMFORT.tLo - T : T > COMFORT.tHi ? T - COMFORT.tHi : 0
+  const rp = RH < COMFORT.rhLo ? COMFORT.rhLo - RH : RH > COMFORT.rhHi ? RH - COMFORT.rhHi : 0
+  return tp + 0.1 * rp
+}
+
+// Best ventilation window in the next 24 h to move indoor air toward the
+// comfort zone: a run of hours where outdoor air is meaningfully closer to
+// comfort than indoor (and won't condense). Returns the most-improving run.
+// In winter outdoor air scores far worse on temperature, so no window is found.
 function bestVentWindow(hours, Tin, RHin) {
   if (!hours || !hours.length) return null
-  const ahIn = absoluteHumidity(Tin, RHin)
+  const inPen = comfortPenalty(Tin, RHin)
   const now = Date.now()
   const fut = hours.filter(h => h.time.getTime() + 3600000 > now).slice(0, 24)
   let best = null, cur = null
   for (const h of fut) {
-    const ahOut = absoluteHumidity(h.temp, h.humidity)
-    const ok = ahOut < ahIn - 0.5 && dewPoint(h.temp, h.humidity) < Tin
+    const improve = inPen - comfortPenalty(h.temp, h.humidity) // >0 → outdoor closer to comfort
+    const ok = improve > 0.5 && dewPoint(h.temp, h.humidity) < Tin
     if (ok) {
-      if (!cur) cur = { start: h.time, end: h.time, maxDrier: 0 }
+      if (!cur) cur = { start: h.time, end: h.time, maxImprove: 0 }
       cur.end = h.time
-      cur.maxDrier = Math.max(cur.maxDrier, ahIn - ahOut)
+      cur.maxImprove = Math.max(cur.maxImprove, improve)
     } else if (cur) {
-      if (!best || cur.maxDrier > best.maxDrier) best = cur
+      if (!best || cur.maxImprove > best.maxImprove) best = cur
       cur = null
     }
   }
-  if (cur && (!best || cur.maxDrier > best.maxDrier)) best = cur
+  if (cur && (!best || cur.maxImprove > best.maxImprove)) best = cur
   return best
 }
 
@@ -611,10 +621,11 @@ function fmtSlot(start, end) {
 // Ventilation tab (indoor + outdoor: temp + humidity only)
 
 function LueftenTab({ inTemp, setInTemp, inRH, setInRH, outTemp, setOutTemp, outRH, setOutRH, hours }) {
-  const verdict  = ventVerdict(inTemp, inRH, outTemp, outRH)
-  const feltIn   = indoorApparentTemp(inTemp, inRH).value
-  const feltOut  = indoorApparentTemp(outTemp, outRH).value
-  const win      = bestVentWindow(hours, inTemp, inRH)
+  const verdict   = ventVerdict(inTemp, inRH, outTemp, outRH)
+  const feltIn    = indoorApparentTemp(inTemp, inRH).value
+  const feltOut   = indoorApparentTemp(outTemp, outRH).value
+  const win       = bestVentWindow(hours, inTemp, inRH)
+  const comfyNow  = comfortPenalty(inTemp, inRH) < 0.5
 
   return (
     <>
@@ -660,11 +671,15 @@ function LueftenTab({ inTemp, setInTemp, inRH, setInRH, outTemp, setOutTemp, out
         win
           ? <p className="vent-window good">
               🪟 Bestes Lüftungsfenster: <strong>{fmtSlot(win.start, win.end)}</strong> –
-              {' '}bis {fmt1(win.maxDrier)} g/m³ trockener.
+              {' '}bringt das Raumklima näher an den Wohlfühlbereich (~20–24°C, 40–60%).
             </p>
-          : <p className="vent-window neutral">
-              In den nächsten 24 h ist die Aussenluft nirgends klar trockener – kein günstiges Entfeuchtungs-Fenster.
-            </p>
+          : comfyNow
+            ? <p className="vent-window neutral">
+                Innenklima liegt bereits im Wohlfühlbereich (~20–24°C, 40–60%) – Lüften v.a. für frische Luft.
+              </p>
+            : <p className="vent-window neutral">
+                In den nächsten 24 h bringt die Aussenluft das Raumklima dem Wohlfühlbereich nicht näher (z.&nbsp;B. im Winter zu kalt).
+              </p>
       )}
 
       <p className="vent-note">
