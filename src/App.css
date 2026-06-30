@@ -187,6 +187,23 @@ h1 {
   font-variant-numeric: tabular-nums;
 }
 
+.chip.felt {
+  color: #fbbf24;
+  border-color: #92400e;
+  background: #78350f22;
+}
+
+.vent-window {
+  font-size: 0.8rem;
+  line-height: 1.5;
+  padding: 0.6rem 0.8rem;
+  border-radius: var(--rs);
+  margin-bottom: 0.6rem;
+}
+.vent-window.good    { background: #14532d33; color: #86efac; border: 1px solid #166534; }
+.vent-window.neutral { background: #1e2235;   color: var(--muted); border: 1px solid var(--border); }
+.vent-window strong  { color: inherit; }
+
 .verdict-chip {
   font-size: 0.8rem;
   font-weight: 700;
@@ -526,6 +543,9 @@ input[type='range'] {
 }
 .fc-xlab { font-weight: 700; fill: var(--text); }
 .fc-hourlab { font-size: 8px; opacity: 0.8; }
+.fc-past { fill: #000; opacity: 0.28; }
+.fc-now { stroke: #86efac; stroke-width: 1.4; opacity: 0.85; }
+.fc-nowlab { fill: #86efac; font-size: 8.5px; font-weight: 700; }
 .fc-cursor { stroke: var(--text); stroke-width: 1; opacity: 0.55; }
 .fc-dot { stroke: var(--bg); stroke-width: 1.5; }
 .fc-dot.sun   { fill: #fbbf24; }

@@ -69,12 +69,12 @@ export async function fetchCurrentWeather(lat, lon) {
 // keeping the per-model samples so callers can build a confidence band.
 // Each entry: { time, temp, humidity, wind, solar (medians),
 //               samples: [{ t, rh, w, s }] one per model that has data }.
-export async function fetchHourlyForecast(lat, lon, hours = 384) {
+export async function fetchHourlyForecast(lat, lon, futureHours = 384, pastHours = 6) {
   const url =
     `${BASE}?latitude=${lat}&longitude=${lon}` +
     `&hourly=${VARS.join(',')}` +
     `&models=${MODELS.join(',')}` +
-    `&wind_speed_unit=kmh&timezone=auto&forecast_days=16`
+    `&wind_speed_unit=kmh&timezone=auto&forecast_days=16&past_days=1`
 
   const res = await fetch(url)
   if (!res.ok) throw new Error(`Open-Meteo ${res.status}`)
@@ -111,10 +111,11 @@ export async function fetchHourlyForecast(lat, lon, hours = 384) {
     }
   }).filter(Boolean)
 
-  // Start from the current hour (drop past entries), then take `hours`.
+  // Keep `pastHours` before the current hour, then `futureHours` ahead.
   const now = Date.now()
-  const startIdx = Math.max(0, all.findIndex(e => e.time.getTime() + 3600000 > now))
-  return all.slice(startIdx, startIdx + hours)
+  const nowIdx = Math.max(0, all.findIndex(e => e.time.getTime() + 3600000 > now))
+  const start = Math.max(0, nowIdx - pastHours)
+  return all.slice(start, nowIdx + futureHours)
 }
 
 // Forward geocoding via Nominatim (OpenStreetMap, no key required).

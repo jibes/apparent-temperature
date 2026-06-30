@@ -68,13 +68,34 @@ describe('fetchHourlyForecast (multi-model median)', () => {
         shortwave_radiation_gfs_seamless:  fill(400),
       },
     })
-    const out = await fetchHourlyForecast(52, 13, 24)
+    const out = await fetchHourlyForecast(52, 13, 24, 0) // no past hours
     expect(out).toHaveLength(24)
     expect(out[0]).toMatchObject({ temp: 20, humidity: 50, wind: 10, solar: 300 })
     expect(out[0].samples).toHaveLength(2)            // per-model samples kept
     expect(out[0].samples[0]).toMatchObject({ t: 18, rh: 50, w: 8 })
     expect(out[0].time).toBeInstanceOf(Date)
     expect(out[0].time.getTime() + 3600000).toBeGreaterThan(Date.now())
+  })
+
+  it('includes the requested number of past hours', async () => {
+    const base = Date.now() - 6 * 3600000
+    const times = Array.from({ length: 48 }, (_, i) =>
+      new Date(base + i * 3600000).toISOString()
+    )
+    const fill = v => times.map(() => v)
+    mockFetch({
+      hourly: {
+        time: times,
+        temperature_2m_icon_seamless: fill(20),
+        relative_humidity_2m_icon_seamless: fill(50),
+        wind_speed_10m_icon_seamless: fill(10),
+        shortwave_radiation_icon_seamless: fill(0),
+      },
+    })
+    const out = await fetchHourlyForecast(52, 13, 12, 4)
+    // first entry should be ~4 h in the past
+    expect(out[0].time.getTime()).toBeLessThan(Date.now())
+    expect(out[0].time.getTime() + 4 * 3600000).toBeLessThan(Date.now() + 3600000)
   })
 
   it('throws on HTTP error', async () => {

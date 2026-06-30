@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
 import {
   utci, utciCategory, meanRadiantTemp, clearSkyMax,
-  ventilationAssessment,
+  ventilationAssessment, indoorApparentTemp,
   dewPoint,
   absoluteHumidity,
 } from './formulas.js'
@@ -299,7 +299,7 @@ function ForecastChart({ hours }) {
   const wrapRef = useRef()
   const svgRef = useRef()
   const [w, setW] = useState(360)
-  const [selIdx, setSelIdx] = useState(0)
+  const [selIdx, setSelIdx] = useState(null) // null → defaults to "now"
   useEffect(() => {
     if (!wrapRef.current) return
     const ro = new ResizeObserver(es => setW(es[0].contentRect.width))
@@ -365,8 +365,10 @@ function ForecastChart({ hours }) {
     if (hr !== 0 && hr % labelStep === 0) labels.push(i)
   })
 
-  const spanDays = Math.round(n / 24)
-  const si  = Math.min(selIdx, n - 1)
+  const nowMs  = Date.now()
+  const nowIdx = Math.max(0, data.findIndex(d => d.time.getTime() + 3600000 > nowMs))
+  const spanDays = Math.round((n - nowIdx) / 24)
+  const si  = selIdx == null ? nowIdx : Math.min(selIdx, n - 1)
   const sel = data[si]
   const r1  = v => Math.round(v)
   const selDate = sel.time
@@ -409,6 +411,10 @@ function ForecastChart({ hours }) {
             onPointerMove={e => { if (e.buttons) pick(e) }}
             style={{ touchAction: 'pan-x' }}
           >
+            {/* past overlay */}
+            {nowIdx > 0 && (
+              <rect x={0} y={padT} width={x(nowIdx)} height={innerH} className="fc-past" />
+            )}
             {yticks.map(v => (
               <line key={v} x1={0} x2={chartW} y1={y(v)} y2={y(v)} className="fc-grid" />
             ))}
@@ -426,12 +432,16 @@ function ForecastChart({ hours }) {
             <path d={line('shade')} className="fc-line shade" />
             <path d={line('sun')}   className="fc-line sun" />
 
+            {/* now marker */}
+            <line x1={x(nowIdx)} x2={x(nowIdx)} y1={padT} y2={padT + innerH} className="fc-now" />
+            <text x={x(nowIdx) + 3} y={padT + 9} className="fc-nowlab">Jetzt</text>
+
             {/* selection cursor */}
             <line x1={x(si)} x2={x(si)} y1={padT} y2={padT + innerH} className="fc-cursor" />
             <circle cx={x(si)} cy={y(sel.sun.med)}   r="3.5" className="fc-dot sun" />
             <circle cx={x(si)} cy={y(sel.shade.med)} r="3.5" className="fc-dot shade" />
 
-            {/* time labels at 3h/6h marks, weekday/date at midnight */}
+            {/* time labels at 3h/6h marks, weekday + day-of-month at midnight */}
             {labels.map(i => (
               <text key={`h${i}`} x={x(i)} y={H - 7} className="fc-hourlab" textAnchor="middle">
                 {String(data[i].time.getHours()).padStart(2, '0')}
@@ -439,7 +449,7 @@ function ForecastChart({ hours }) {
             ))}
             {days.map(({ i, date }) => (
               <text key={`l${i}`} x={x(i) + 3} y={H - 7} className="fc-xlab">
-                {i === 0 ? 'Heute' : WEEKDAY[date.getDay()]}
+                {WEEKDAY[date.getDay()]} {date.getDate()}.
               </text>
             ))}
           </svg>
@@ -521,7 +531,10 @@ function FeltTab({
             liegt je nach Bewölkung und Standort dazwischen.
           </p>
           <div className="felt-meta">
-            <span>Lufttemp. {fmt1(outTemp)}°C</span>
+            <span>
+              Sonne vs. Schatten +{fmt1(feltSun - feltShade)}°C
+              <Info>Wie viel wärmer es sich in der vollen Sonne anfühlt als im Schatten (gleiche Luft, Wind &amp; Feuchte).</Info>
+            </span>
             <span>
               Strahlungstemp. Sonne {fmt1(TrSun)}°C
               <Info>Mittlere Strahlungstemperatur bei klarem Himmel (Sonnenstand jetzt). Im Schatten ≈ Lufttemperatur.</Info>
@@ -529,6 +542,10 @@ function FeltTab({
             <span>
               Taupunkt {fmt1(dp)}°C · {fmt1(ah)} g/m³
               <Info>Taupunkt und absolute Feuchte der Aussenluft.</Info>
+            </span>
+            <span>
+              Schwüle {dp >= 18 ? 'stark' : dp >= 16 ? 'spürbar' : 'gering'}
+              <Info>Schwüle-Empfinden nach Taupunkt: ab ~16°C spürbar, ab ~18°C stark – dann kühlt Schwitzen kaum noch.</Info>
             </span>
             {wxMeta && wxMeta.sources > 1 && (
               <span>
@@ -558,10 +575,46 @@ function FeltTab({
   )
 }
 
+// Best dehumidifying ventilation window in the next 24 h: a run of hours where
+// outdoor air is meaningfully drier than indoor (≥0.5 g/m³) and won't condense
+// (outdoor dew point below indoor temp). Returns the driest such run, or null.
+function bestVentWindow(hours, Tin, RHin) {
+  if (!hours || !hours.length) return null
+  const ahIn = absoluteHumidity(Tin, RHin)
+  const now = Date.now()
+  const fut = hours.filter(h => h.time.getTime() + 3600000 > now).slice(0, 24)
+  let best = null, cur = null
+  for (const h of fut) {
+    const ahOut = absoluteHumidity(h.temp, h.humidity)
+    const ok = ahOut < ahIn - 0.5 && dewPoint(h.temp, h.humidity) < Tin
+    if (ok) {
+      if (!cur) cur = { start: h.time, end: h.time, maxDrier: 0 }
+      cur.end = h.time
+      cur.maxDrier = Math.max(cur.maxDrier, ahIn - ahOut)
+    } else if (cur) {
+      if (!best || cur.maxDrier > best.maxDrier) best = cur
+      cur = null
+    }
+  }
+  if (cur && (!best || cur.maxDrier > best.maxDrier)) best = cur
+  return best
+}
+
+function fmtSlot(start, end) {
+  const today = new Date().toDateString() === start.toDateString()
+  const day = today ? 'heute' : WEEKDAY[start.getDay()]
+  const sh = String(start.getHours()).padStart(2, '0')
+  const eh = String((end.getHours() + 1) % 24).padStart(2, '0')
+  return `${day} ${sh}–${eh} Uhr`
+}
+
 // Ventilation tab (indoor + outdoor: temp + humidity only)
 
-function LueftenTab({ inTemp, setInTemp, inRH, setInRH, outTemp, setOutTemp, outRH, setOutRH }) {
-  const verdict = ventVerdict(inTemp, inRH, outTemp, outRH)
+function LueftenTab({ inTemp, setInTemp, inRH, setInRH, outTemp, setOutTemp, outRH, setOutRH, hours }) {
+  const verdict  = ventVerdict(inTemp, inRH, outTemp, outRH)
+  const feltIn   = indoorApparentTemp(inTemp, inRH).value
+  const feltOut  = indoorApparentTemp(outTemp, outRH).value
+  const win      = bestVentWindow(hours, inTemp, inRH)
 
   return (
     <>
@@ -571,6 +624,7 @@ function LueftenTab({ inTemp, setInTemp, inRH, setInRH, outTemp, setOutTemp, out
           <span className="summary-chips">
             <Chip>{inTemp}{' '}°C</Chip>
             <Chip>{inRH}{' '}%</Chip>
+            <Chip cls="felt">gefühlt {fmt1(feltIn)}°C</Chip>
           </span>
         </summary>
         <div className="section-body">
@@ -585,6 +639,7 @@ function LueftenTab({ inTemp, setInTemp, inRH, setInRH, outTemp, setOutTemp, out
           <span className="summary-chips">
             <Chip>{outTemp}{' '}°C</Chip>
             <Chip>{outRH}{' '}%</Chip>
+            <Chip cls="felt">gefühlt {fmt1(feltOut)}°C</Chip>
           </span>
         </summary>
         <div className="section-body">
@@ -600,6 +655,17 @@ function LueftenTab({ inTemp, setInTemp, inRH, setInRH, outTemp, setOutTemp, out
         </div>
         <VentTable Tin={inTemp} RHin={inRH} Tout={outTemp} RHout={outRH} />
       </div>
+
+      {hours && (
+        win
+          ? <p className="vent-window good">
+              🪟 Bestes Lüftungsfenster: <strong>{fmtSlot(win.start, win.end)}</strong> –
+              {' '}bis {fmt1(win.maxDrier)} g/m³ trockener.
+            </p>
+          : <p className="vent-window neutral">
+              In den nächsten 24 h ist die Aussenluft nirgends klar trockener – kein günstiges Entfeuchtungs-Fenster.
+            </p>
+      )}
 
       <p className="vent-note">
         Wind und Sonne fliessen hier bewusst nicht ein: Sie ändern nicht, <em>ob</em> die
@@ -756,6 +822,7 @@ export default function App() {
               inRH={inRH}       setInRH={setInRH}
               outTemp={outTemp} setOutTemp={setOutTemp}
               outRH={outRH}     setOutRH={setOutRH}
+              hours={geoStatus === 'ok' ? hours : null}
             />
         }
       </main>
