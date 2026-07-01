@@ -161,6 +161,20 @@ export function clearSkyMax(lat, lon = 10, date = new Date()) {
   return clearSkyGHI(solarElevation(lat, lon, date))
 }
 
+// Mean clear-sky GHI [W/m²] over the hour ENDING at `tsMs` (epoch). Matches
+// Open-Meteo's radiation convention (mean of the preceding hour), so it can be
+// compared against forecast shortwave_radiation without the end-of-hour-instant
+// artifact where a steep sunset makes hour-mean "real" exceed instant clear-sky.
+// Averages N sub-samples at the midpoints of N equal sub-intervals of [ts−1h, ts].
+export function clearSkyHourMean(lat, lon, tsMs, N = 6) {
+  let sum = 0
+  for (let k = 0; k < N; k++) {
+    const t = tsMs - ((k + 0.5) / N) * 3600000
+    sum += clearSkyGHI(solarElevation(lat, lon, new Date(t)))
+  }
+  return sum / N
+}
+
 export function utci(Ta, RH, va_kmh, Tr = null) {
   const vel = Math.max(0.5, Math.min(17, va_kmh / 3.6)) // km/h → m/s, clamp
   const d_tr = (Tr ?? Ta) - Ta                          // radiant offset [°C]
