@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
 import {
-  utci, utciCategory, meanRadiantTemp, clearSkyMax, clearSkyHourMean,
+  utci, utciCategory, meanRadiantTemp, clearSkyMax, clearSkyGHI, solarElevation,
   ventilationAssessment, indoorApparentTemp,
   dewPoint,
   absoluteHumidity, specificEnthalpy,
@@ -303,10 +303,11 @@ function stats(arr) {
 
 const WEEKDAY = ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa']
 
-// Clear-sky irradiance [W/m²] for an hour: the preceding-hour mean, matching
-// Open-Meteo's shortwave_radiation convention (see clearSkyHourMean).
+// Clear-sky irradiance [W/m²] at the instant `h.ts` — matches the instantaneous
+// shortwave_radiation_instant used for "real" sun, so both (and the instant
+// temp/RH/wind) describe the same moment T. No interval/instant mismatch.
 function clearSkyAt(h, ctx) {
-  return clearSkyHourMean(ctx.lat, ctx.lon, h.ts)
+  return clearSkyGHI(solarElevation(ctx.lat, ctx.lon, new Date(h.ts)))
 }
 
 // Selectable forecast metrics. `dual` shows sun+shade felt temp; `at(h,ctx)`

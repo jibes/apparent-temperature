@@ -10,7 +10,14 @@ const MODELS = [
   'gem_seamless',       // Environment Canada
   'meteofrance_seamless', // Météo-France
 ]
-const VARS = ['temperature_2m', 'relative_humidity_2m', 'wind_speed_10m', 'shortwave_radiation', 'cloud_cover']
+// Instant variables are values AT the timestamp. Open-Meteo's hourly
+// shortwave_radiation is a MEAN of the *preceding* hour (timestamp = end of
+// interval), which is misaligned with the instant temp/RH/wind/cloud. We use
+// shortwave_radiation_instant so every input to a felt-temp represents the same
+// instant T (and keep the mean as a fallback if a model omits the instant one).
+const INSTANT_VARS = ['temperature_2m', 'relative_humidity_2m', 'wind_speed_10m', 'cloud_cover']
+const CURRENT_VARS = [...INSTANT_VARS, 'shortwave_radiation']            // current block is instantaneous
+const HOURLY_VARS  = [...INSTANT_VARS, 'shortwave_radiation_instant', 'shortwave_radiation']
 
 function median(xs) {
   const a = xs.filter(v => v != null && !Number.isNaN(v)).sort((x, y) => x - y)
@@ -38,7 +45,7 @@ export function toEpoch(t, offsetMs) {
 export async function fetchCurrentWeather(lat, lon) {
   const url =
     `${BASE}?latitude=${lat}&longitude=${lon}` +
-    `&current=${VARS.join(',')}` +
+    `&current=${CURRENT_VARS.join(',')}` +
     `&models=${MODELS.join(',')}` +
     `&wind_speed_unit=kmh&timezone=auto`
 
@@ -83,7 +90,7 @@ export async function fetchCurrentWeather(lat, lon) {
 export async function fetchHourlyForecast(lat, lon, futureHours = 384, pastHours = 6) {
   const url =
     `${BASE}?latitude=${lat}&longitude=${lon}` +
-    `&hourly=${VARS.join(',')}` +
+    `&hourly=${HOURLY_VARS.join(',')}` +
     `&models=${MODELS.join(',')}` +
     `&wind_speed_unit=kmh&timezone=auto&forecast_days=16&past_days=1`
 
@@ -104,14 +111,15 @@ export async function fetchHourlyForecast(lat, lon, futureHours = 384, pastHours
       const t  = h[`temperature_2m_${m}`]?.[i]
       const rh = h[`relative_humidity_2m_${m}`]?.[i]
       const w  = h[`wind_speed_10m_${m}`]?.[i]
-      const s  = h[`shortwave_radiation_${m}`]?.[i]
+      const s  = h[`shortwave_radiation_instant_${m}`]?.[i] ?? h[`shortwave_radiation_${m}`]?.[i]
       const c  = h[`cloud_cover_${m}`]?.[i]
       if (t != null && rh != null && w != null) out.push({ t, rh, w, s: s ?? null, c: c ?? null })
     }
     // Fallback to un-suffixed shape (single model).
     if (!out.length && h.temperature_2m?.[i] != null) {
       out.push({ t: h.temperature_2m[i], rh: h.relative_humidity_2m?.[i],
-                 w: h.wind_speed_10m?.[i], s: h.shortwave_radiation?.[i] ?? null,
+                 w: h.wind_speed_10m?.[i],
+                 s: h.shortwave_radiation_instant?.[i] ?? h.shortwave_radiation?.[i] ?? null,
                  c: h.cloud_cover?.[i] ?? null })
     }
     return out

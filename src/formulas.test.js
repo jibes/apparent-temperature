@@ -3,7 +3,7 @@ import {
   saturationPressure, vaporPressure, dewPoint, absoluteHumidity,
   specificEnthalpy, heatIndex, windChill,
   utci, utciCategory, meanRadiantTemp, clearSkyMax,
-  solarElevation, clearSkyGHI, clearSkyHourMean,
+  solarElevation, clearSkyGHI,
 } from './formulas.js'
 
 // ── Psychrometrics (exact, hand-verified) ──────────────────────────────────
@@ -106,61 +106,6 @@ describe('solar elevation (time of day)', () => {
   it('clearSkyGHI rises with elevation', () => {
     expect(clearSkyGHI(60)).toBeGreaterThan(clearSkyGHI(20))
     expect(clearSkyGHI(0)).toBe(0)
-  })
-})
-
-// ── Clear-sky hour-mean (preceding-hour convention) ─────────────────────────
-// These pin the fix for the "real > clear-sky at sunset" artifact. They must
-// FAIL if clear-sky reverts to an end-of-hour instant, and they exercise the
-// edge hours (sunset, sunrise, solstice noon, night, high latitude) rather than
-// a single fair-weather point. Tolerance-based, because Haurwitz clear-sky and a
-// model's internal clear-sky differ — a hard real≤klar inequality would flake.
-describe('clear-sky hour-mean', () => {
-  const inst = (lat, lon, t) => clearSkyGHI(solarElevation(lat, lon, new Date(t)))
-
-  it('averages the PRECEDING hour: at sunset the mean exceeds the end instant', () => {
-    // lat 50, lon 0, ~2 h before local midsummer sunset — steep decline.
-    const T = Date.parse('2025-07-01T19:00:00Z')
-    const mean = clearSkyHourMean(50, 0, T)
-    expect(inst(50, 0, T)).toBeGreaterThan(0)       // sun still up (real sunset test)
-    expect(mean).toBeGreaterThan(inst(50, 0, T))    // ← the property that fixed the bug
-  })
-
-  it('at sunrise the mean is below the end instant (confirms *preceding*, not following)', () => {
-    const T = Date.parse('2025-12-21T09:00:00Z')    // low winter sun, rising
-    const i = inst(50, 0, T)
-    if (i > 0) expect(clearSkyHourMean(50, 0, T)).toBeLessThan(i)
-  })
-
-  it('sits between the two hour endpoints, near their average', () => {
-    const T = Date.parse('2025-07-01T19:00:00Z')
-    const a = inst(50, 0, T - 3600000), b = inst(50, 0, T)
-    const mean = clearSkyHourMean(50, 0, T)
-    expect(mean).toBeGreaterThanOrEqual(Math.min(a, b) - 1e-6)
-    expect(mean).toBeLessThanOrEqual(Math.max(a, b) + 1e-6)
-    expect(Math.abs(mean - (a + b) / 2)).toBeLessThan(20) // curvature residual only
-  })
-
-  it('near solstice noon the hour is nearly flat: mean ≈ midpoint instant', () => {
-    const T = Date.parse('2025-06-21T12:30:00Z')    // hour 11:30–12:30, midpoint = noon
-    const mid = inst(50, 0, T - 1800000)
-    expect(Math.abs(clearSkyHourMean(50, 0, T) - mid)).toBeLessThan(5)
-  })
-
-  it('is zero across a fully-night hour', () => {
-    expect(clearSkyHourMean(50, 0, Date.parse('2025-12-21T02:00:00Z'))).toBe(0)
-  })
-
-  it('stays finite and non-negative at high latitude (near midnight sun)', () => {
-    const v = clearSkyHourMean(78, 15, Date.parse('2025-06-21T00:00:00Z'))
-    expect(Number.isFinite(v)).toBe(true)
-    expect(v).toBeGreaterThanOrEqual(0)
-  })
-
-  it('depends only on the absolute instant (DST-agnostic by construction)', () => {
-    // Same UTC instant expressed either side of a EU DST switch → identical.
-    const t = Date.parse('2025-03-30T09:00:00Z')
-    expect(clearSkyHourMean(50, 10, t)).toBe(clearSkyHourMean(50, 10, t))
   })
 })
 

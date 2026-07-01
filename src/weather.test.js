@@ -123,6 +123,47 @@ describe('fetchHourlyForecast (multi-model median)', () => {
     mockFetch({}, false, 500)
     await expect(fetchHourlyForecast(0, 0)).rejects.toThrow(/500/)
   })
+
+  // Boundary/integration coverage: run the real parse pipeline against a frozen
+  // Open-Meteo-shaped payload. Catches field renames, the instant-vs-mean
+  // radiation choice, and a ±1h alignment shift between radiation and the instant
+  // variables — the class of bug unit tests on the math can't see. Deterministic,
+  // no network. Values encode their own hour index so a shift is detectable.
+  it('pipeline: instant radiation, aligned to the same hour as temperature, with hour-mean fallback', async () => {
+    const N = 48
+    const base = Date.now() - 3 * 3600000
+    const times = Array.from({ length: N }, (_, i) => new Date(base + i * 3600000).toISOString())
+    const idx = Array.from({ length: N }, (_, i) => i)
+    mockFetch({
+      hourly: {
+        time: times,
+        // icon: BOTH instant and mean present → the instant one must win
+        temperature_2m_icon_seamless: idx.map(i => 100 + i),
+        relative_humidity_2m_icon_seamless: idx.map(() => 50),
+        wind_speed_10m_icon_seamless: idx.map(() => 10),
+        cloud_cover_icon_seamless: idx.map(() => 40),
+        shortwave_radiation_instant_icon_seamless: idx.map(i => 200 + i),
+        shortwave_radiation_icon_seamless: idx.map(i => 900 + i),
+        // gfs: only the hour-mean present → fallback path
+        temperature_2m_gfs_seamless: idx.map(i => 100 + i),
+        relative_humidity_2m_gfs_seamless: idx.map(() => 60),
+        wind_speed_10m_gfs_seamless: idx.map(() => 12),
+        cloud_cover_gfs_seamless: idx.map(() => 50),
+        shortwave_radiation_gfs_seamless: idx.map(i => 300 + i),
+      },
+    })
+    const out = await fetchHourlyForecast(52, 13, 12, 3)
+    expect(out.length).toBeGreaterThan(0)
+    const [icon, gfs] = out[0].samples
+    // icon uses the INSTANT field (200+i), not the mean (900+i), aligned to temp's hour
+    expect(icon.s - 200).toBe(icon.t - 100)
+    expect(icon.s - 900).not.toBe(icon.t - 100)
+    // gfs falls back to the hour-mean (300+i), still the same hour as its temp
+    expect(gfs.s - 300).toBe(gfs.t - 100)
+    // other fields parsed
+    expect(icon.c).toBe(40)
+    expect(gfs.rh).toBe(60)
+  })
 })
 
 describe('searchLocation', () => {
