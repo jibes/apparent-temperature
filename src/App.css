@@ -527,6 +527,15 @@ input[type='range'] {
   gap: 0.3rem;
   margin-bottom: 0.55rem;
 }
+.mdot {
+  display: inline-block;
+  width: 0.45rem;
+  height: 0.45rem;
+  border-radius: 50%;
+  margin-right: 0.2rem;
+  vertical-align: middle;
+}
+.mdot + .mdot { margin-left: -0.15rem; }
 .fc-plot { display: flex; align-items: stretch; }
 .fc-axis { flex: 0 0 auto; display: block; }
 .fc-scroll {

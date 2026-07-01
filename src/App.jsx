@@ -312,14 +312,37 @@ function niceStep(range) {
   return (n < 1.5 ? 1 : n < 3 ? 2 : n < 7 ? 5 : 10) * pow
 }
 
-// Multi-day forecast chart: median line(s) + model-spread band, for a
-// selectable metric. Width is measured for crisp rendering.
+// Value series (with confidence band) for one metric across all hours, on its
+// own y-scale so metrics with different units can be overlaid.
+function seriesForMetric(m, hours) {
+  const defs = m.dual
+    ? [
+        { key: 'shade', color: '#7dd3fc', icon: '🌳', at: h => h.samples.map(s => utci(s.t, s.rh, s.w, s.t)) },
+        { key: 'sun',   color: '#fbbf24', icon: '☀️', at: h => {
+            const ss = h.samples.filter(s => s.s != null)
+            return (ss.length ? ss : h.samples).map(s => utci(s.t, s.rh, s.w, meanRadiantTemp(s.t, s.s ?? 0)))
+          } },
+      ]
+    : [{ key: m.key, color: m.color, icon: '', at: h => h.samples.map(m.val) }]
+
+  const series = defs.map(d => ({ key: d.key, color: d.color, icon: d.icon, points: hours.map(h => stats(d.at(h))) }))
+  let yMin = Infinity, yMax = -Infinity
+  for (const s of series) for (const p of s.points) { if (!p) continue; yMin = Math.min(yMin, p.lo); yMax = Math.max(yMax, p.hi) }
+  const step = niceStep(yMax - yMin)
+  yMin = Math.floor(yMin / step) * step
+  yMax = Math.ceil(yMax / step) * step
+  if (yMax <= yMin) yMax = yMin + step
+  return { metric: m, series, yMin, yMax, step }
+}
+
+// Multi-day forecast chart. Metrics toggle independently and overlay; each is
+// scaled to its own range. Width is measured for crisp rendering.
 function ForecastChart({ hours }) {
   const wrapRef = useRef()
   const svgRef = useRef()
   const [w, setW] = useState(360)
   const [selIdx, setSelIdx] = useState(null) // null → defaults to "now"
-  const [metricKey, setMetricKey] = useState('felt')
+  const [active, setActive] = useState({ felt: true })
   useEffect(() => {
     if (!wrapRef.current) return
     const ro = new ResizeObserver(es => setW(es[0].contentRect.width))
@@ -327,89 +350,74 @@ function ForecastChart({ hours }) {
     return () => ro.disconnect()
   }, [])
 
-  const M = METRICS.find(m => m.key === metricKey) ?? METRICS[0]
-  const seriesDefs = M.dual
-    ? [{ key: 'shade', color: '#7dd3fc', icon: '🌳' }, { key: 'sun', color: '#fbbf24', icon: '☀️' }]
-    : [{ key: 'v', color: M.color, icon: '' }]
-
-  const data = useMemo(() => {
+  const activeKey = METRICS.filter(m => active[m.key]).map(m => m.key).join(',')
+  const groups = useMemo(() => {
     if (!hours || !hours.length) return null
-    return hours.map(h => {
-      const e = { time: h.time, ts: h.ts, models: h.samples.length }
-      if (M.dual) {
-        e.shade = stats(h.samples.map(s => utci(s.t, s.rh, s.w, s.t)))
-        const sunS = h.samples.filter(s => s.s != null)
-        e.sun = stats((sunS.length ? sunS : h.samples).map(s => utci(s.t, s.rh, s.w, meanRadiantTemp(s.t, s.s ?? 0))))
-      } else {
-        e.v = stats(h.samples.map(M.val))
-      }
-      return e
-    })
-  }, [hours, metricKey])
+    return METRICS.filter(m => active[m.key]).map(m => seriesForMetric(m, hours))
+  }, [hours, activeKey])
 
-  if (!data) return null
+  if (!groups) return null
 
-  const H = 175, padT = 10, padB = 24
-  const axisW = 30, padR = 10
+  const H = 175, padT = 10, padB = 24, padR = 10
+  const single = groups.length === 1
+  const axisW = single ? 30 : 6
   const innerH = H - padT - padB
-  const n = data.length
-  const skeys = seriesDefs.map(s => s.key)
+  const n = hours.length
 
-  let yMin = Infinity, yMax = -Infinity
-  for (const d of data) for (const k of skeys) {
-    const s = d[k]; if (!s) continue
-    yMin = Math.min(yMin, s.lo); yMax = Math.max(yMax, s.hi)
-  }
-  const step = niceStep(yMax - yMin)
-  yMin = Math.floor(yMin / step) * step
-  yMax = Math.ceil(yMax / step) * step
-  if (yMax <= yMin) yMax = yMin + step
-
-  // ~one day per visible plot width on a phone.
   const pxPerHour = Math.max(6, (w - axisW) / 24)
   const chartW = Math.round((n - 1) * pxPerHour + padR + 4)
   const x = i => 4 + i * pxPerHour
-  const y = v => padT + (1 - (v - yMin) / (yMax - yMin)) * innerH
+  const ymap = g => v => padT + (1 - (v - g.yMin) / (g.yMax - g.yMin)) * innerH
 
-  const line = key => data.map((d, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)} ${y(d[key].med).toFixed(1)}`).join(' ')
-  const band = key => {
-    const up = data.map((d, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)} ${y(d[key].hi).toFixed(1)}`).join(' ')
+  const linePath = (points, yf) => points.map((p, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)} ${yf(p.med).toFixed(1)}`).join(' ')
+  const bandPath = (points, yf) => {
+    const up = points.map((p, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)} ${yf(p.hi).toFixed(1)}`).join(' ')
     let dn = ''
-    for (let i = n - 1; i >= 0; i--) dn += `L${x(i).toFixed(1)} ${y(data[i][key].lo).toFixed(1)} `
+    for (let i = n - 1; i >= 0; i--) dn += `L${x(i).toFixed(1)} ${yf(points[i].lo).toFixed(1)} `
     return `${up} ${dn}Z`
   }
 
-  const yticks = []
-  for (let v = yMin; v <= yMax + 1e-9; v += step) yticks.push(v)
-  const fmtTick = v => (step < 1 ? v.toFixed(1) : String(Math.round(v)))
-  const fmtVal  = v => (M.dp ? v.toFixed(M.dp) : String(Math.round(v)))
+  // Horizontal gridlines: labelled ticks when a single metric is shown,
+  // else evenly-spaced unlabelled references (units would differ).
+  const grid = []
+  if (single) {
+    const g = groups[0], yf = ymap(g)
+    for (let v = g.yMin; v <= g.yMax + 1e-9; v += g.step) grid.push({ y: yf(v), label: g.step < 1 ? v.toFixed(1) : String(Math.round(v)) })
+  } else {
+    for (let f = 0; f <= 4; f++) grid.push({ y: padT + (f / 4) * innerH, label: null })
+  }
 
   // Gridline density adapts to how wide an hour is on screen.
-  const minorStep = pxPerHour >= 11 ? 1 : pxPerHour >= 6 ? 3 : 6 // hourly / 3h / 6h
-  const labelStep = pxPerHour >= 8 ? 3 : 6                        // x-axis time labels
+  const minorStep = pxPerHour >= 11 ? 1 : pxPerHour >= 6 ? 3 : 6
+  const labelStep = pxPerHour >= 8 ? 3 : 6
   const days = [], mids = [], minor = [], labels = []
-  data.forEach((d, i) => {
-    const hr = d.time.getHours()
-    if (i === 0 || hr === 0) days.push({ i, date: d.time })
+  hours.forEach((h, i) => {
+    const hr = h.time.getHours()
+    if (i === 0 || hr === 0) days.push({ i, date: h.time })
     else if (hr % 6 === 0) mids.push(i)
     else if (hr % minorStep === 0) minor.push(i)
     if (hr !== 0 && hr % labelStep === 0) labels.push(i)
   })
 
   const nowMs  = Date.now()
-  const nowIdx = Math.max(0, data.findIndex(d => d.ts + 3600000 > nowMs))
+  const nowIdx = Math.max(0, hours.findIndex(h => h.ts + 3600000 > nowMs))
   const spanDays = Math.round((n - nowIdx) / 24)
   const si  = selIdx == null ? nowIdx : Math.min(selIdx, n - 1)
-  const sel = data[si]
-  const selDate = sel.time
+  const selDate = hours[si].time
   const dateStr = `${WEEKDAY[selDate.getDay()]} ${selDate.getDate()}.${selDate.getMonth() + 1}.`
   const hhmm = `${String(selDate.getHours()).padStart(2, '0')}:00`
+  const models = hours[si].samples.length
 
   function pick(e) {
     const rect = svgRef.current.getBoundingClientRect()
     let idx = Math.round((e.clientX - rect.left - 4) / pxPerHour)
     setSelIdx(Math.max(0, Math.min(n - 1, idx)))
   }
+  function toggle(key) {
+    setActive(a => ({ ...a, [key]: !a[key] }))
+  }
+
+  const axisUnits = [...new Set(groups.map(g => g.metric.unit))].join(' · ')
 
   return (
     <div className="forecast" ref={wrapRef}>
@@ -422,26 +430,38 @@ function ForecastChart({ hours }) {
           <button
             key={m.key}
             type="button"
-            className={`preset-btn ${m.key === metricKey ? 'active' : ''}`}
-            onClick={() => setMetricKey(m.key)}
-          >{m.label}</button>
+            className={`preset-btn ${active[m.key] ? 'active' : ''}`}
+            onClick={() => toggle(m.key)}
+          >
+            {(m.dual ? ['#7dd3fc', '#fbbf24'] : [m.color]).map((c, k) => (
+              <i key={k} className="mdot" style={{ background: c }} />
+            ))}
+            {m.label}
+          </button>
         ))}
       </div>
 
       <div className="fc-readout">
         <span className="fc-rtime">{dateStr} {hhmm}</span>
-        {seriesDefs.map(sd => sel[sd.key] && (
-          <span key={sd.key} className="fc-rval" style={{ color: sd.color }}>
-            {sd.icon} {fmtVal(sel[sd.key].med)} {M.unit} <em>{fmtVal(sel[sd.key].lo)}–{fmtVal(sel[sd.key].hi)}</em>
-          </span>
-        ))}
-        <span className="fc-rmodels">{sel.models}{' '}Mod.</span>
+        {groups.flatMap(g => g.series.map(s => {
+          const p = s.points[si]; if (!p) return null
+          const f = v => (g.metric.dp ? v.toFixed(g.metric.dp) : String(Math.round(v)))
+          return (
+            <span key={g.metric.key + s.key} className="fc-rval" style={{ color: s.color }}>
+              {s.icon} {f(p.med)} {g.metric.unit} <em>{f(p.lo)}–{f(p.hi)}</em>
+            </span>
+          )
+        }))}
+        <span className="fc-rmodels">{models}{' '}Mod.</span>
       </div>
 
+      {groups.length === 0 ? (
+        <p className="forecast-note">Mindestens einen Wert wählen.</p>
+      ) : (
       <div className="fc-plot">
         <svg className="fc-axis" width={axisW} height={H} viewBox={`0 0 ${axisW} ${H}`} aria-hidden="true">
-          {yticks.map(v => (
-            <text key={v} x={axisW - 3} y={y(v) + 3} className="fc-ylab" textAnchor="end">{fmtTick(v)}</text>
+          {grid.map((g, k) => g.label != null && (
+            <text key={k} x={axisW - 3} y={g.y + 3} className="fc-ylab" textAnchor="end">{g.label}</text>
           ))}
         </svg>
         <div className="fc-scroll">
@@ -452,12 +472,11 @@ function ForecastChart({ hours }) {
             onPointerMove={e => { if (e.buttons) pick(e) }}
             style={{ touchAction: 'pan-x' }}
           >
-            {/* past overlay */}
             {nowIdx > 0 && (
               <rect x={0} y={padT} width={x(nowIdx)} height={innerH} className="fc-past" />
             )}
-            {yticks.map(v => (
-              <line key={v} x1={0} x2={chartW} y1={y(v)} y2={y(v)} className="fc-grid" />
+            {grid.map((g, k) => (
+              <line key={k} x1={0} x2={chartW} y1={g.y} y2={g.y} className="fc-grid" />
             ))}
             {minor.map(i => (
               <line key={`mn${i}`} x1={x(i)} x2={x(i)} y1={padT} y2={padT + innerH} className="fc-gridminor" />
@@ -469,27 +488,24 @@ function ForecastChart({ hours }) {
               <line key={i} x1={x(i)} x2={x(i)} y1={padT} y2={padT + innerH} className="fc-daygrid" />
             ))}
 
-            {seriesDefs.map(sd => (
-              <path key={`b${sd.key}`} d={band(sd.key)} fill={sd.color} opacity="0.15" stroke="none" />
-            ))}
-            {seriesDefs.map(sd => (
-              <path key={`l${sd.key}`} d={line(sd.key)} fill="none" stroke={sd.color} strokeWidth="1.8" />
-            ))}
+            {groups.map(g => g.series.map(s => (
+              <path key={`b${g.metric.key}${s.key}`} d={bandPath(s.points, ymap(g))} fill={s.color} opacity="0.13" stroke="none" />
+            )))}
+            {groups.map(g => g.series.map(s => (
+              <path key={`l${g.metric.key}${s.key}`} d={linePath(s.points, ymap(g))} fill="none" stroke={s.color} strokeWidth="1.8" />
+            )))}
 
-            {/* now marker */}
             <line x1={x(nowIdx)} x2={x(nowIdx)} y1={padT} y2={padT + innerH} className="fc-now" />
             <text x={x(nowIdx) + 3} y={padT + 9} className="fc-nowlab">Jetzt</text>
 
-            {/* selection cursor */}
             <line x1={x(si)} x2={x(si)} y1={padT} y2={padT + innerH} className="fc-cursor" />
-            {seriesDefs.map(sd => sel[sd.key] && (
-              <circle key={`d${sd.key}`} cx={x(si)} cy={y(sel[sd.key].med)} r="3.5" fill={sd.color} stroke="var(--bg)" strokeWidth="1.5" />
-            ))}
+            {groups.map(g => g.series.map(s => s.points[si] && (
+              <circle key={`d${g.metric.key}${s.key}`} cx={x(si)} cy={ymap(g)(s.points[si].med)} r="3.5" fill={s.color} stroke="var(--bg)" strokeWidth="1.5" />
+            )))}
 
-            {/* time labels at 3h/6h marks, weekday + day-of-month at midnight */}
             {labels.map(i => (
               <text key={`h${i}`} x={x(i)} y={H - 7} className="fc-hourlab" textAnchor="middle">
-                {String(data[i].time.getHours()).padStart(2, '0')}
+                {String(hours[i].time.getHours()).padStart(2, '0')}
               </text>
             ))}
             {days.map(({ i, date }) => (
@@ -500,7 +516,11 @@ function ForecastChart({ hours }) {
           </svg>
         </div>
       </div>
-      <p className="forecast-note">Achse in {M.unit}. Tippen wählt einen Zeitpunkt. Schattierung = Spanne der Wettermodelle (Unsicherheit).</p>
+      )}
+      <p className="forecast-note">
+        {single ? `Achse in ${axisUnits}. ` : 'Werte je Reihe eigenständig skaliert. '}
+        Tippen wählt einen Zeitpunkt. Schattierung = Modell-Spanne.
+      </p>
     </div>
   )
 }
