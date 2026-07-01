@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
 import {
-  utci, utciCategory, meanRadiantTemp, clearSkyMax,
+  utci, utciCategory, meanRadiantTemp, clearSkyMax, clearSkyGHI, solarElevation,
   ventilationAssessment, indoorApparentTemp,
   dewPoint,
   absoluteHumidity, specificEnthalpy,
@@ -293,14 +293,28 @@ function stats(arr) {
 
 const WEEKDAY = ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa']
 
-// Selectable forecast metrics. `dual` shows sun+shade felt temp; the rest are
-// single series computed from each model sample. `dp` = decimals in readout.
+// Clear-sky irradiance [W/m²] at an hour (deterministic; no cloud info).
+function clearSkyAt(h, ctx) {
+  return clearSkyGHI(solarElevation(ctx.lat, ctx.lon, new Date(h.ts)))
+}
+
+// Selectable forecast metrics. `dual` shows sun+shade felt temp; `at(h,ctx)`
+// returns the per-hour value array (one per model sample, or a single value for
+// deterministic quantities); `val` is shorthand for a simple per-sample value.
+// `dp` = decimals in the readout.
 const METRICS = [
-  { key: 'felt', label: 'Gefühlt', unit: '°C', dual: true, dp: 0 },
+  { key: 'felt',  label: 'Gefühlt', unit: '°C', dual: true, dp: 0 },
+  { key: 'fcloud', label: 'Gefühlt bewölkt', unit: '°C', color: '#f472b6', dp: 0,
+    at: h => {
+      const ss = h.samples.filter(s => s.s != null)
+      return (ss.length ? ss : h.samples).map(s => utci(s.t, s.rh, s.w, meanRadiantTemp(s.t, s.s ?? 0)))
+    } },
   { key: 'temp', label: 'Lufttemp.', unit: '°C', color: '#fb923c', dp: 0, val: s => s.t },
+  { key: 'wind', label: 'Wind', unit: 'km/h', color: '#94a3b8', dp: 0, val: s => s.w },
   { key: 'rh',   label: 'rel. Feuchte', unit: '%', color: '#38bdf8', dp: 0, val: s => s.rh },
   { key: 'ah',   label: 'abs. Feuchte', unit: 'g/m³', color: '#22d3ee', dp: 1, val: s => absoluteHumidity(s.t, s.rh) },
   { key: 'enth', label: 'Enthalpie', unit: 'kJ/kg', color: '#a78bfa', dp: 0, val: s => specificEnthalpy(s.t, s.rh) },
+  { key: 'csun', label: 'Sonne (klar)', unit: 'W/m²', color: '#fde047', dp: 0, at: (h, ctx) => [clearSkyAt(h, ctx)] },
 ]
 
 // A "nice" gridline step giving ~5 divisions over the range (1/2/5 × 10ⁿ).
@@ -314,18 +328,18 @@ function niceStep(range) {
 
 // Value series (with confidence band) for one metric across all hours, on its
 // own y-scale so metrics with different units can be overlaid.
-function seriesForMetric(m, hours) {
+function seriesForMetric(m, hours, ctx) {
   const defs = m.dual
     ? [
         { key: 'shade', color: '#7dd3fc', icon: '🌳', at: h => h.samples.map(s => utci(s.t, s.rh, s.w, s.t)) },
-        { key: 'sun',   color: '#fbbf24', icon: '☀️', at: h => {
-            const ss = h.samples.filter(s => s.s != null)
-            return (ss.length ? ss : h.samples).map(s => utci(s.t, s.rh, s.w, meanRadiantTemp(s.t, s.s ?? 0)))
+        { key: 'sun',   color: '#fbbf24', icon: '☀️', at: (h, c) => {
+            const I = clearSkyAt(h, c) // clear-sky sun, consistent with the felt cards
+            return h.samples.map(s => utci(s.t, s.rh, s.w, meanRadiantTemp(s.t, I)))
           } },
       ]
-    : [{ key: m.key, color: m.color, icon: '', at: h => h.samples.map(m.val) }]
+    : [{ key: m.key, color: m.color, icon: '', at: m.at ?? (h => h.samples.map(m.val)) }]
 
-  const series = defs.map(d => ({ key: d.key, color: d.color, icon: d.icon, points: hours.map(h => stats(d.at(h))) }))
+  const series = defs.map(d => ({ key: d.key, color: d.color, icon: d.icon, points: hours.map(h => stats(d.at(h, ctx))) }))
   let yMin = Infinity, yMax = -Infinity
   for (const s of series) for (const p of s.points) { if (!p) continue; yMin = Math.min(yMin, p.lo); yMax = Math.max(yMax, p.hi) }
   const step = niceStep(yMax - yMin)
@@ -337,7 +351,7 @@ function seriesForMetric(m, hours) {
 
 // Multi-day forecast chart. Metrics toggle independently and overlay; each is
 // scaled to its own range. Width is measured for crisp rendering.
-function ForecastChart({ hours }) {
+function ForecastChart({ hours, lat, lon }) {
   const wrapRef = useRef()
   const svgRef = useRef()
   const [w, setW] = useState(360)
@@ -353,8 +367,9 @@ function ForecastChart({ hours }) {
   const activeKey = METRICS.filter(m => active[m.key]).map(m => m.key).join(',')
   const groups = useMemo(() => {
     if (!hours || !hours.length) return null
-    return METRICS.filter(m => active[m.key]).map(m => seriesForMetric(m, hours))
-  }, [hours, activeKey])
+    const ctx = { lat, lon }
+    return METRICS.filter(m => active[m.key]).map(m => seriesForMetric(m, hours, ctx))
+  }, [hours, activeKey, lat, lon])
 
   if (!groups) return null
 
@@ -626,7 +641,7 @@ function FeltTab({
         </div>
       </details>
 
-      <ForecastChart hours={hours} />
+      <ForecastChart hours={hours} lat={lat} lon={lon} />
 
       <details className="section-card formula-card">
         <summary className="section-summary">
