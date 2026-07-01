@@ -3,7 +3,7 @@ import {
   utci, utciCategory, meanRadiantTemp, clearSkyMax,
   ventilationAssessment, indoorApparentTemp,
   dewPoint,
-  absoluteHumidity,
+  absoluteHumidity, specificEnthalpy,
 } from './formulas.js'
 import { fetchCurrentWeather, fetchHourlyForecast, searchLocation } from './weather.js'
 import './App.css'
@@ -293,13 +293,33 @@ function stats(arr) {
 
 const WEEKDAY = ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa']
 
-// Multi-day felt-temperature chart: shade & sun median lines with a
-// model-spread confidence band each. Width is measured for crisp rendering.
+// Selectable forecast metrics. `dual` shows sun+shade felt temp; the rest are
+// single series computed from each model sample. `dp` = decimals in readout.
+const METRICS = [
+  { key: 'felt', label: 'Gefühlt', unit: '°C', dual: true, dp: 0 },
+  { key: 'temp', label: 'Lufttemp.', unit: '°C', color: '#fb923c', dp: 0, val: s => s.t },
+  { key: 'rh',   label: 'rel. Feuchte', unit: '%', color: '#38bdf8', dp: 0, val: s => s.rh },
+  { key: 'ah',   label: 'abs. Feuchte', unit: 'g/m³', color: '#22d3ee', dp: 1, val: s => absoluteHumidity(s.t, s.rh) },
+  { key: 'enth', label: 'Enthalpie', unit: 'kJ/kg', color: '#a78bfa', dp: 0, val: s => specificEnthalpy(s.t, s.rh) },
+]
+
+// A "nice" gridline step giving ~5 divisions over the range (1/2/5 × 10ⁿ).
+function niceStep(range) {
+  if (!(range > 0)) return 1
+  const raw = range / 5
+  const pow = Math.pow(10, Math.floor(Math.log10(raw)))
+  const n = raw / pow
+  return (n < 1.5 ? 1 : n < 3 ? 2 : n < 7 ? 5 : 10) * pow
+}
+
+// Multi-day forecast chart: median line(s) + model-spread band, for a
+// selectable metric. Width is measured for crisp rendering.
 function ForecastChart({ hours }) {
   const wrapRef = useRef()
   const svgRef = useRef()
   const [w, setW] = useState(360)
   const [selIdx, setSelIdx] = useState(null) // null → defaults to "now"
+  const [metricKey, setMetricKey] = useState('felt')
   useEffect(() => {
     if (!wrapRef.current) return
     const ro = new ResizeObserver(es => setW(es[0].contentRect.width))
@@ -307,33 +327,43 @@ function ForecastChart({ hours }) {
     return () => ro.disconnect()
   }, [])
 
+  const M = METRICS.find(m => m.key === metricKey) ?? METRICS[0]
+  const seriesDefs = M.dual
+    ? [{ key: 'shade', color: '#7dd3fc', icon: '🌳' }, { key: 'sun', color: '#fbbf24', icon: '☀️' }]
+    : [{ key: 'v', color: M.color, icon: '' }]
+
   const data = useMemo(() => {
     if (!hours || !hours.length) return null
     return hours.map(h => {
-      const shade = stats(h.samples.map(s => utci(s.t, s.rh, s.w, s.t)))
-      const sunS  = h.samples.filter(s => s.s != null)
-      const sun   = stats((sunS.length ? sunS : h.samples)
-        .map(s => utci(s.t, s.rh, s.w, meanRadiantTemp(s.t, s.s ?? 0))))
-      const air   = stats(h.samples.map(s => s.t))
-      return { time: h.time, ts: h.ts, shade, sun, air: air?.med, models: h.samples.length }
+      const e = { time: h.time, ts: h.ts, models: h.samples.length }
+      if (M.dual) {
+        e.shade = stats(h.samples.map(s => utci(s.t, s.rh, s.w, s.t)))
+        const sunS = h.samples.filter(s => s.s != null)
+        e.sun = stats((sunS.length ? sunS : h.samples).map(s => utci(s.t, s.rh, s.w, meanRadiantTemp(s.t, s.s ?? 0))))
+      } else {
+        e.v = stats(h.samples.map(M.val))
+      }
+      return e
     })
-  }, [hours])
+  }, [hours, metricKey])
 
   if (!data) return null
 
   const H = 175, padT = 10, padB = 24
-  const axisW = 26, padR = 10
+  const axisW = 30, padR = 10
   const innerH = H - padT - padB
   const n = data.length
+  const skeys = seriesDefs.map(s => s.key)
 
   let yMin = Infinity, yMax = -Infinity
-  for (const d of data) for (const s of [d.shade, d.sun]) {
-    if (!s) continue
+  for (const d of data) for (const k of skeys) {
+    const s = d[k]; if (!s) continue
     yMin = Math.min(yMin, s.lo); yMax = Math.max(yMax, s.hi)
   }
-  yMin = Math.floor((yMin - 1) / 5) * 5
-  yMax = Math.ceil((yMax + 1) / 5) * 5
-  if (yMax === yMin) yMax = yMin + 5
+  const step = niceStep(yMax - yMin)
+  yMin = Math.floor(yMin / step) * step
+  yMax = Math.ceil(yMax / step) * step
+  if (yMax <= yMin) yMax = yMin + step
 
   // ~one day per visible plot width on a phone.
   const pxPerHour = Math.max(6, (w - axisW) / 24)
@@ -349,9 +379,10 @@ function ForecastChart({ hours }) {
     return `${up} ${dn}Z`
   }
 
-  const yStep = (yMax - yMin) <= 25 ? 5 : 10
   const yticks = []
-  for (let v = yMin; v <= yMax; v += yStep) yticks.push(v)
+  for (let v = yMin; v <= yMax + 1e-9; v += step) yticks.push(v)
+  const fmtTick = v => (step < 1 ? v.toFixed(1) : String(Math.round(v)))
+  const fmtVal  = v => (M.dp ? v.toFixed(M.dp) : String(Math.round(v)))
 
   // Gridline density adapts to how wide an hour is on screen.
   const minorStep = pxPerHour >= 11 ? 1 : pxPerHour >= 6 ? 3 : 6 // hourly / 3h / 6h
@@ -370,7 +401,6 @@ function ForecastChart({ hours }) {
   const spanDays = Math.round((n - nowIdx) / 24)
   const si  = selIdx == null ? nowIdx : Math.min(selIdx, n - 1)
   const sel = data[si]
-  const r1  = v => Math.round(v)
   const selDate = sel.time
   const dateStr = `${WEEKDAY[selDate.getDay()]} ${selDate.getDate()}.${selDate.getMonth() + 1}.`
   const hhmm = `${String(selDate.getHours()).padStart(2, '0')}:00`
@@ -385,22 +415,33 @@ function ForecastChart({ hours }) {
     <div className="forecast" ref={wrapRef}>
       <div className="forecast-head">
         <span className="section-name muted">{spanDays}-Tage-Vorschau</span>
-        <span className="forecast-legend">
-          <i className="lg sun" /> Sonne <i className="lg shade" /> Schatten
-        </span>
+      </div>
+
+      <div className="fc-metrics">
+        {METRICS.map(m => (
+          <button
+            key={m.key}
+            type="button"
+            className={`preset-btn ${m.key === metricKey ? 'active' : ''}`}
+            onClick={() => setMetricKey(m.key)}
+          >{m.label}</button>
+        ))}
       </div>
 
       <div className="fc-readout">
         <span className="fc-rtime">{dateStr} {hhmm}</span>
-        <span className="fc-rval sun">☀️ {r1(sel.sun.med)}° <em>{r1(sel.sun.lo)}–{r1(sel.sun.hi)}</em></span>
-        <span className="fc-rval shade">🌳 {r1(sel.shade.med)}° <em>{r1(sel.shade.lo)}–{r1(sel.shade.hi)}</em></span>
+        {seriesDefs.map(sd => sel[sd.key] && (
+          <span key={sd.key} className="fc-rval" style={{ color: sd.color }}>
+            {sd.icon} {fmtVal(sel[sd.key].med)} {M.unit} <em>{fmtVal(sel[sd.key].lo)}–{fmtVal(sel[sd.key].hi)}</em>
+          </span>
+        ))}
         <span className="fc-rmodels">{sel.models}{' '}Mod.</span>
       </div>
 
       <div className="fc-plot">
         <svg className="fc-axis" width={axisW} height={H} viewBox={`0 0 ${axisW} ${H}`} aria-hidden="true">
           {yticks.map(v => (
-            <text key={v} x={axisW - 3} y={y(v) + 3} className="fc-ylab" textAnchor="end">{v}°</text>
+            <text key={v} x={axisW - 3} y={y(v) + 3} className="fc-ylab" textAnchor="end">{fmtTick(v)}</text>
           ))}
         </svg>
         <div className="fc-scroll">
@@ -427,10 +468,13 @@ function ForecastChart({ hours }) {
             {days.map(({ i }) => i > 0 && (
               <line key={i} x1={x(i)} x2={x(i)} y1={padT} y2={padT + innerH} className="fc-daygrid" />
             ))}
-            <path d={band('shade')} className="fc-band shade" />
-            <path d={band('sun')}   className="fc-band sun" />
-            <path d={line('shade')} className="fc-line shade" />
-            <path d={line('sun')}   className="fc-line sun" />
+
+            {seriesDefs.map(sd => (
+              <path key={`b${sd.key}`} d={band(sd.key)} fill={sd.color} opacity="0.15" stroke="none" />
+            ))}
+            {seriesDefs.map(sd => (
+              <path key={`l${sd.key}`} d={line(sd.key)} fill="none" stroke={sd.color} strokeWidth="1.8" />
+            ))}
 
             {/* now marker */}
             <line x1={x(nowIdx)} x2={x(nowIdx)} y1={padT} y2={padT + innerH} className="fc-now" />
@@ -438,8 +482,9 @@ function ForecastChart({ hours }) {
 
             {/* selection cursor */}
             <line x1={x(si)} x2={x(si)} y1={padT} y2={padT + innerH} className="fc-cursor" />
-            <circle cx={x(si)} cy={y(sel.sun.med)}   r="3.5" className="fc-dot sun" />
-            <circle cx={x(si)} cy={y(sel.shade.med)} r="3.5" className="fc-dot shade" />
+            {seriesDefs.map(sd => sel[sd.key] && (
+              <circle key={`d${sd.key}`} cx={x(si)} cy={y(sel[sd.key].med)} r="3.5" fill={sd.color} stroke="var(--bg)" strokeWidth="1.5" />
+            ))}
 
             {/* time labels at 3h/6h marks, weekday + day-of-month at midnight */}
             {labels.map(i => (
@@ -455,7 +500,7 @@ function ForecastChart({ hours }) {
           </svg>
         </div>
       </div>
-      <p className="forecast-note">Tippen wählt einen Zeitpunkt. Schattierung = Spanne der Wettermodelle (Unsicherheit).</p>
+      <p className="forecast-note">Achse in {M.unit}. Tippen wählt einen Zeitpunkt. Schattierung = Spanne der Wettermodelle (Unsicherheit).</p>
     </div>
   )
 }
@@ -542,6 +587,10 @@ function FeltTab({
             <span>
               Taupunkt {fmt1(dp)}°C · {fmt1(ah)} g/m³
               <Info>Taupunkt und absolute Feuchte der Aussenluft.</Info>
+            </span>
+            <span>
+              Enthalpie {fmt1(specificEnthalpy(outTemp, outRH))} kJ/kg
+              <Info>Spezifische Enthalpie der Feuchtluft (fühlbare + latente Wärme pro kg trockene Luft).</Info>
             </span>
             <span>
               Schwüle {dp >= 18 ? 'stark' : dp >= 16 ? 'spürbar' : 'gering'}

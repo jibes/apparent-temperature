@@ -521,6 +521,12 @@ input[type='range'] {
 .forecast-legend .lg.sun   { background: #fbbf24; }
 .forecast-legend .lg.shade { background: #7dd3fc; }
 
+.fc-metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  margin-bottom: 0.55rem;
+}
 .fc-plot { display: flex; align-items: stretch; }
 .fc-axis { flex: 0 0 auto; display: block; }
 .fc-scroll {
