@@ -36,6 +36,12 @@ h1 {
   letter-spacing: -0.3px;
 }
 
+.freshness {
+  font-size: 0.68rem;
+  color: var(--muted);
+  margin-top: 0.35rem;
+}
+
 /* ── Geo bar ── */
 .geo-bar {
   display: flex;

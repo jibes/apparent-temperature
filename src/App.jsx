@@ -12,6 +12,16 @@ import './App.css'
 
 function fmt1(n) { return (Math.round(n * 10) / 10).toFixed(1) }
 
+// Relative "updated X ago" label.
+function agoLabel(ms) {
+  if (!ms) return null
+  const min = Math.floor(Math.max(0, Date.now() - ms) / 60000)
+  if (min < 1)  return 'gerade aktualisiert'
+  if (min < 60) return `aktualisiert vor ${min} min`
+  const hrs = Math.floor(min / 60)
+  return `aktualisiert vor ${hrs} Std`
+}
+
 // State that survives reloads via localStorage.
 function usePersistentState(key, initial) {
   const [val, setVal] = useState(() => {
@@ -311,6 +321,7 @@ const METRICS = [
     } },
   { key: 'temp', label: 'Lufttemp.', unit: '°C', color: '#fb923c', dp: 0, val: s => s.t },
   { key: 'wind', label: 'Wind', unit: 'km/h', color: '#94a3b8', dp: 0, val: s => s.w },
+  { key: 'clouds', label: 'Bewölkung', unit: '%', color: '#cbd5e1', dp: 0, val: s => s.c },
   { key: 'rh',   label: 'rel. Feuchte', unit: '%', color: '#38bdf8', dp: 0, val: s => s.rh },
   { key: 'ah',   label: 'abs. Feuchte', unit: 'g/m³', color: '#22d3ee', dp: 1, val: s => absoluteHumidity(s.t, s.rh) },
   { key: 'enth', label: 'Enthalpie', unit: 'kJ/kg', color: '#a78bfa', dp: 0, val: s => specificEnthalpy(s.t, s.rh) },
@@ -384,12 +395,25 @@ function ForecastChart({ hours, lat, lon }) {
   const x = i => 4 + i * pxPerHour
   const ymap = g => v => padT + (1 - (v - g.yMin) / (g.yMax - g.yMin)) * innerH
 
-  const linePath = (points, yf) => points.map((p, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)} ${yf(p.med).toFixed(1)}`).join(' ')
+  // Paths tolerate gaps (null points, e.g. a metric a model doesn't provide).
+  const linePath = (points, yf) => {
+    let d = '', pen = false
+    for (let i = 0; i < points.length; i++) {
+      const p = points[i]
+      if (!p) { pen = false; continue }
+      d += `${pen ? 'L' : 'M'}${x(i).toFixed(1)} ${yf(p.med).toFixed(1)} `
+      pen = true
+    }
+    return d
+  }
   const bandPath = (points, yf) => {
-    const up = points.map((p, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)} ${yf(p.hi).toFixed(1)}`).join(' ')
+    const idx = points.map((p, i) => (p ? i : -1)).filter(i => i >= 0)
+    if (!idx.length) return ''
+    let up = ''
+    idx.forEach((i, k) => { up += `${k ? 'L' : 'M'}${x(i).toFixed(1)} ${yf(points[i].hi).toFixed(1)} ` })
     let dn = ''
-    for (let i = n - 1; i >= 0; i--) dn += `L${x(i).toFixed(1)} ${yf(points[i].lo).toFixed(1)} `
-    return `${up} ${dn}Z`
+    for (let k = idx.length - 1; k >= 0; k--) { const i = idx[k]; dn += `L${x(i).toFixed(1)} ${yf(points[i].lo).toFixed(1)} ` }
+    return `${up}${dn}Z`
   }
 
   // Horizontal gridlines: labelled ticks when a single metric is shown,
@@ -558,7 +582,7 @@ function FeltCard({ side, icon, feltTemp, airTemp }) {
 
 function FeltTab({
   outTemp, setOutTemp, outRH, setOutRH, wind, setWind,
-  hours, wxMeta, geoStatus, lat, lon,
+  hours, wxMeta, clouds, geoStatus, lat, lon,
 }) {
   const clearSky  = clearSkyMax(lat, lon)   // full-sun ceiling for now & place
   const TrSun     = meanRadiantTemp(outTemp, clearSky)
@@ -627,6 +651,12 @@ function FeltTab({
               Enthalpie {fmt1(specificEnthalpy(outTemp, outRH))} kJ/kg
               <Info>Spezifische Enthalpie der Feuchtluft (fühlbare + latente Wärme pro kg trockene Luft).</Info>
             </span>
+            {clouds != null && (
+              <span>
+                Bewölkung {clouds}%
+                <Info>Aktuelle Bewölkung (Konsens der Wettermodelle). Dämpft die Sonneneinstrahlung und damit die gefühlte Temperatur in der Sonne.</Info>
+              </span>
+            )}
             <span>
               Schwüle {dp >= 18 ? 'stark' : dp >= 16 ? 'spürbar' : 'gering'}
               <Info>Schwüle-Empfinden nach Taupunkt: ab ~16°C spürbar, ab ~18°C stark – dann kühlt Schwitzen kaum noch.</Info>
@@ -792,13 +822,18 @@ export default function App() {
   const [locSource,   setLocSource]   = usePersistentState('locSource', 'gps') // 'gps' | 'search'
   const [hours,       setHours]       = useState(null)
   const [wxMeta,      setWxMeta]      = useState(null) // { sources, spread }
+  const [clouds,      setClouds]      = useState(null) // current cloud cover %
+  const [updatedAt,   setUpdatedAt]   = useState(null) // ms of last successful fetch
+  const [nowTick,     setNowTick]     = useState(0)    // forces the freshness label to refresh
 
   // Apply fetched weather to outdoor inputs; prefill indoor temp once on first
   // load so the Lüften tab starts from a sensible baseline (= outdoor temp).
   const prefilledRef = useRef(false)
   function applyWeather(w) {
     setOutTemp(w.temp); setOutRH(w.humidity); setWind(w.wind)
+    if (w.clouds != null) setClouds(w.clouds)
     if (w.sources) setWxMeta({ sources: w.sources, spread: w.spread })
+    setUpdatedAt(Date.now())
     if (!prefilledRef.current) {
       setInTemp(w.temp)
       prefilledRef.current = true
@@ -880,6 +915,20 @@ export default function App() {
     }
   }, [])
 
+  // Keep the freshness label ticking; auto-refresh when the tab is refocused
+  // and the data has gone stale (>10 min).
+  useEffect(() => {
+    const id = setInterval(() => setNowTick(t => t + 1), 60000)
+    function onVisible() {
+      if (document.visibilityState === 'visible' &&
+          updatedAt && Date.now() - updatedAt > 10 * 60000) {
+        refresh()
+      }
+    }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => { clearInterval(id); document.removeEventListener('visibilitychange', onVisible) }
+  }, [updatedAt, locSource, geoLocation])
+
   return (
     <div className="app">
       <header>
@@ -891,6 +940,9 @@ export default function App() {
           onSearch={searchWeather}
           onLocate={loadWeather}
         />
+        {updatedAt && geoStatus === 'ok' && (
+          <p className="freshness" key={nowTick}>{agoLabel(updatedAt)}</p>
+        )}
       </header>
 
       <nav className="tabs">
@@ -912,6 +964,7 @@ export default function App() {
               wind={wind}       setWind={setWind}
               hours={hours}
               wxMeta={geoStatus === 'ok' ? wxMeta : null}
+              clouds={geoStatus === 'ok' ? clouds : null}
               geoStatus={geoStatus}
               lat={geoLocation?.lat ?? 50}
               lon={geoLocation?.lon ?? 10}

@@ -43,6 +43,9 @@ describe('fetchCurrentWeather (multi-model median)', () => {
         shortwave_radiation_icon_seamless: 300,
         shortwave_radiation_gfs_seamless:  320,
         shortwave_radiation_ecmwf_ifs025:  280,
+        cloud_cover_icon_seamless: 40,
+        cloud_cover_gfs_seamless:  60,
+        cloud_cover_ecmwf_ifs025:  50,
       },
     })
     const w = await fetchCurrentWeather(52, 13)
@@ -50,6 +53,7 @@ describe('fetchCurrentWeather (multi-model median)', () => {
     expect(w.humidity).toBe(55)
     expect(w.wind).toBe(12)
     expect(w.solar).toBe(300)
+    expect(w.clouds).toBe(50)
     expect(w.sources).toBe(3)
     expect(w.spread.temp).toBe(10) // 30 − 20
   })

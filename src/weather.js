@@ -10,7 +10,7 @@ const MODELS = [
   'gem_seamless',       // Environment Canada
   'meteofrance_seamless', // Météo-France
 ]
-const VARS = ['temperature_2m', 'relative_humidity_2m', 'wind_speed_10m', 'shortwave_radiation']
+const VARS = ['temperature_2m', 'relative_humidity_2m', 'wind_speed_10m', 'shortwave_radiation', 'cloud_cover']
 
 function median(xs) {
   const a = xs.filter(v => v != null && !Number.isNaN(v)).sort((x, y) => x - y)
@@ -56,14 +56,17 @@ export async function fetchCurrentWeather(lat, lon) {
   const rhs   = pick('relative_humidity_2m')
   const winds = pick('wind_speed_10m')
   const sols  = pick('shortwave_radiation')
+  const clds  = pick('cloud_cover')
 
   if (!temps.length) throw new Error('Open-Meteo: no model data')
 
+  const cloudMed = median(clds)
   return {
     temp:     Math.round(median(temps) * 2) / 2,
     humidity: Math.round(median(rhs)),
     wind:     Math.round(median(winds)),
     solar:    Math.round(median(sols) ?? 0),
+    clouds:   cloudMed == null ? null : Math.round(cloudMed),
     sources:  temps.length,
     spread: {
       temp:     spread(temps),
@@ -102,12 +105,14 @@ export async function fetchHourlyForecast(lat, lon, futureHours = 384, pastHours
       const rh = h[`relative_humidity_2m_${m}`]?.[i]
       const w  = h[`wind_speed_10m_${m}`]?.[i]
       const s  = h[`shortwave_radiation_${m}`]?.[i]
-      if (t != null && rh != null && w != null) out.push({ t, rh, w, s: s ?? null })
+      const c  = h[`cloud_cover_${m}`]?.[i]
+      if (t != null && rh != null && w != null) out.push({ t, rh, w, s: s ?? null, c: c ?? null })
     }
     // Fallback to un-suffixed shape (single model).
     if (!out.length && h.temperature_2m?.[i] != null) {
       out.push({ t: h.temperature_2m[i], rh: h.relative_humidity_2m?.[i],
-                 w: h.wind_speed_10m?.[i], s: h.shortwave_radiation?.[i] ?? null })
+                 w: h.wind_speed_10m?.[i], s: h.shortwave_radiation?.[i] ?? null,
+                 c: h.cloud_cover?.[i] ?? null })
     }
     return out
   }
