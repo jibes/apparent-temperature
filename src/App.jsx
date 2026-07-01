@@ -354,6 +354,7 @@ function seriesForMetric(m, hours, ctx) {
   const series = defs.map(d => ({ key: d.key, color: d.color, icon: d.icon, points: hours.map(h => stats(d.at(h, ctx))) }))
   let yMin = Infinity, yMax = -Infinity
   for (const s of series) for (const p of s.points) { if (!p) continue; yMin = Math.min(yMin, p.lo); yMax = Math.max(yMax, p.hi) }
+  if (!Number.isFinite(yMin) || !Number.isFinite(yMax)) { yMin = 0; yMax = 1 } // no data → avoid Inf/NaN
   const step = niceStep(yMax - yMin)
   yMin = Math.floor(yMin / step) * step
   yMax = Math.ceil(yMax / step) * step
