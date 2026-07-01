@@ -1,5 +1,22 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { fetchCurrentWeather, fetchHourlyForecast, searchLocation } from './weather.js'
+import { fetchCurrentWeather, fetchHourlyForecast, searchLocation, toEpoch } from './weather.js'
+
+describe('toEpoch (timezone handling)', () => {
+  it('interprets a zone-less local string with the location offset', () => {
+    // 12:00 wall clock at UTC+2 is 10:00 UTC
+    expect(toEpoch('2026-07-01T12:00', 2 * 3600000))
+      .toBe(Date.parse('2026-07-01T10:00:00Z'))
+  })
+  it('interprets a west-of-UTC offset correctly', () => {
+    // 12:00 wall clock at UTC-5 is 17:00 UTC
+    expect(toEpoch('2026-07-01T12:00', -5 * 3600000))
+      .toBe(Date.parse('2026-07-01T17:00:00Z'))
+  })
+  it('trusts a string that already carries a zone', () => {
+    expect(toEpoch('2026-07-01T12:00:00.000Z', 2 * 3600000))
+      .toBe(Date.parse('2026-07-01T12:00:00.000Z'))
+  })
+})
 
 afterEach(() => { vi.restoreAllMocks() })
 

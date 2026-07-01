@@ -25,6 +25,14 @@ function spread(xs) {
   return Math.max(...a) - Math.min(...a)
 }
 
+// True UTC epoch [ms] for an Open-Meteo time string. With timezone=auto the
+// string carries no zone (location wall clock) → interpret as UTC and subtract
+// the location offset. If a zone is present (Z or ±HH:MM), trust it as-is.
+export function toEpoch(t, offsetMs) {
+  if (/[zZ]$|[+-]\d\d:?\d\d$/.test(t)) return Date.parse(t)
+  return Date.parse(t + 'Z') - offsetMs
+}
+
 // Fetches current weather, consolidated across models.
 // Returns { temp, humidity, wind, solar, sources, spread:{temp,humidity,wind} }.
 export async function fetchCurrentWeather(lat, lon) {
@@ -78,7 +86,13 @@ export async function fetchHourlyForecast(lat, lon, futureHours = 384, pastHours
 
   const res = await fetch(url)
   if (!res.ok) throw new Error(`Open-Meteo ${res.status}`)
-  const h = await res.json().then(d => d.hourly)
+  const json = await res.json()
+  const h = json.hourly
+  // With timezone=auto the time strings are the location's local wall clock
+  // (no offset). `new Date(str)` parses them in the *device* zone — fine for
+  // display (the hour numbers are preserved) but wrong for absolute comparison.
+  // So we also compute the true UTC instant `ts` using the location offset.
+  const offsetMs = (json.utc_offset_seconds ?? 0) * 1000
 
   // Build one sample per model (suffixed keys), keeping only complete rows.
   const sampleAt = i => {
@@ -102,7 +116,8 @@ export async function fetchHourlyForecast(lat, lon, futureHours = 384, pastHours
     const samples = sampleAt(i)
     if (!samples.length) return null
     return {
-      time:     new Date(t),
+      time:     new Date(t),          // wall clock, for display
+      ts:       toEpoch(t, offsetMs),  // true UTC instant, for compares
       samples,
       temp:     median(samples.map(s => s.t)),
       humidity: median(samples.map(s => s.rh)),
@@ -113,7 +128,7 @@ export async function fetchHourlyForecast(lat, lon, futureHours = 384, pastHours
 
   // Keep `pastHours` before the current hour, then `futureHours` ahead.
   const now = Date.now()
-  const nowIdx = Math.max(0, all.findIndex(e => e.time.getTime() + 3600000 > now))
+  const nowIdx = Math.max(0, all.findIndex(e => e.ts + 3600000 > now))
   const start = Math.max(0, nowIdx - pastHours)
   return all.slice(start, nowIdx + futureHours)
 }

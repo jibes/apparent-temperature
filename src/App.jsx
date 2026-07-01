@@ -315,7 +315,7 @@ function ForecastChart({ hours }) {
       const sun   = stats((sunS.length ? sunS : h.samples)
         .map(s => utci(s.t, s.rh, s.w, meanRadiantTemp(s.t, s.s ?? 0))))
       const air   = stats(h.samples.map(s => s.t))
-      return { time: h.time, shade, sun, air: air?.med, models: h.samples.length }
+      return { time: h.time, ts: h.ts, shade, sun, air: air?.med, models: h.samples.length }
     })
   }, [hours])
 
@@ -366,7 +366,7 @@ function ForecastChart({ hours }) {
   })
 
   const nowMs  = Date.now()
-  const nowIdx = Math.max(0, data.findIndex(d => d.time.getTime() + 3600000 > nowMs))
+  const nowIdx = Math.max(0, data.findIndex(d => d.ts + 3600000 > nowMs))
   const spanDays = Math.round((n - nowIdx) / 24)
   const si  = selIdx == null ? nowIdx : Math.min(selIdx, n - 1)
   const sel = data[si]
@@ -592,7 +592,7 @@ function bestVentWindow(hours, Tin, RHin) {
   if (!hours || !hours.length) return null
   const inPen = comfortPenalty(Tin, RHin)
   const now = Date.now()
-  const fut = hours.filter(h => h.time.getTime() + 3600000 > now).slice(0, 24)
+  const fut = hours.filter(h => h.ts + 3600000 > now).slice(0, 24)
   let best = null, cur = null
   for (const h of fut) {
     const improve = inPen - comfortPenalty(h.temp, h.humidity) // >0 → outdoor closer to comfort
