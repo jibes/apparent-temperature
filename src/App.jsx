@@ -325,6 +325,7 @@ const METRICS = [
   { key: 'rh',   label: 'rel. Feuchte', unit: '%', color: '#38bdf8', dp: 0, val: s => s.rh },
   { key: 'ah',   label: 'abs. Feuchte', unit: 'g/m³', color: '#22d3ee', dp: 1, val: s => absoluteHumidity(s.t, s.rh) },
   { key: 'enth', label: 'Enthalpie', unit: 'kJ/kg', color: '#a78bfa', dp: 0, val: s => specificEnthalpy(s.t, s.rh) },
+  { key: 'rsun', label: 'Sonne (real)', unit: 'W/m²', color: '#f59e0b', dp: 0, val: s => s.s },
   { key: 'csun', label: 'Sonne (klar)', unit: 'W/m²', color: '#fde047', dp: 0, at: (h, ctx) => [clearSkyAt(h, ctx)] },
 ]
 
