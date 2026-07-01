@@ -303,9 +303,19 @@ function stats(arr) {
 
 const WEEKDAY = ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa']
 
-// Clear-sky irradiance [W/m²] at an hour (deterministic; no cloud info).
+// Clear-sky irradiance [W/m²] for an hour (deterministic; no cloud info).
+// Open-Meteo's shortwave_radiation is the MEAN of the preceding hour, so we
+// average the clear-sky curve over that same hour rather than sampling one
+// instant — otherwise, near sunset the end-of-hour instant can fall below the
+// hour-mean real radiation, wrongly making "real" exceed the clear-sky ceiling.
 function clearSkyAt(h, ctx) {
-  return clearSkyGHI(solarElevation(ctx.lat, ctx.lon, new Date(h.ts)))
+  const N = 6
+  let sum = 0
+  for (let k = 0; k < N; k++) {
+    const t = h.ts - ((k + 0.5) / N) * 3600000 // midpoints of N sub-intervals in [ts−1h, ts]
+    sum += clearSkyGHI(solarElevation(ctx.lat, ctx.lon, new Date(t)))
+  }
+  return sum / N
 }
 
 // Selectable forecast metrics. `dual` shows sun+shade felt temp; `at(h,ctx)`
