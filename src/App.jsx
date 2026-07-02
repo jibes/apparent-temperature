@@ -333,7 +333,8 @@ const BASES = [
 const DERIVED = [
   { key: 'rh',     label: 'rel. Feuchte',   unit: '%',    color: '#38bdf8', dp: 0, deps: ['temp', 'ah'], val: s => s.rh },
   { key: 'effsun', label: 'Sonne effektiv', unit: 'W/m²', color: '#f59e0b', dp: 0, deps: ['csun', 'clouds'], val: s => s.s },
-  { key: 'felt',   label: 'Gefühlt',        unit: '°C',   color: '#f472b6', dp: 0, deps: ['temp'], felt: true },
+  { key: 'felt',   label: 'Gefühlt',        unit: '°C',   color: '#f472b6', dp: 0, felt: true,
+    show: a => a.temp && (a.ah || a.wind || a.csun) },
 ]
 
 // A "nice" gridline step giving ~5 divisions over the range (1/2/5 × 10ⁿ).
@@ -357,19 +358,22 @@ function pointsScale(points) {
   return { yMin, yMax, step }
 }
 
-// "Gefühlt" per hour = UTCI(air, humidity, [wind], [radiation]) composed from
-// the active bases: wind cools only if Wind is on; radiation comes from the
-// effective (cloud-adjusted) sun when both Sonne & Bewölkung are on, from clear
-// sun when only Sonne is on, and is absent (shade) otherwise.
+// "Gefühlt" per hour = UTCI composed from the ACTIVE factors; inactive ones use
+// neutral defaults so felt reflects only what you toggle on: real humidity if
+// Feuchte is on else a neutral 50% (as wind chill is defined without humidity);
+// real wind if Wind is on else calm; effective sun (Sonne+Bewölkung) or clear
+// sun (Sonne only) else shade. It appears only once a factor is active, so it is
+// never just a relabelled air temperature.
 function feltPoints(hours, ctx, active) {
   return hours.map(h => {
     const clearSky = clearSkyAt(h, ctx)
     return stats(h.samples.map(s => {
+      const rhUsed   = active.ah ? s.rh : 50
       const windUsed = active.wind ? s.w : 0
       const Tr = (active.csun && active.clouds) ? meanRadiantTemp(s.t, s.s ?? clearSky)
                : active.csun                    ? meanRadiantTemp(s.t, clearSky)
                :                                  s.t
-      return utci(s.t, s.rh, windUsed, Tr)
+      return utci(s.t, rhUsed, windUsed, Tr)
     }))
   })
 }
@@ -387,7 +391,8 @@ function buildSeries(hours, ctx, active) {
     out.push({ ...b, derived: false, points, ...pointsScale(points) })
   }
   for (const d of DERIVED) {
-    if (!d.deps.every(k => active[k])) continue
+    const visible = d.show ? d.show(active) : d.deps.every(k => active[k])
+    if (!visible) continue
     const points = d.felt ? feltPoints(hours, ctx, active) : pointsFor(d)
     out.push({ ...d, derived: true, points, ...pointsScale(points) })
   }
@@ -508,9 +513,6 @@ function ForecastChart({ hours, lat, lon }) {
         ))}
       </div>
 
-      {series.length === 0 ? (
-        <p className="forecast-note">Mindestens einen Basiswert wählen.</p>
-      ) : (
       <div className="fc-plot">
         <svg className="fc-axis" width={axisW} height={H} viewBox={`0 0 ${axisW} ${H}`} aria-hidden="true">
           {grid.map((g, k) => g.label != null && (
@@ -546,7 +548,7 @@ function ForecastChart({ hours, lat, lon }) {
             ))}
             {series.map(s => (
               <path key={`l${s.key}`} d={linePath(s.points, ymap(s))} fill="none" stroke={s.color}
-                strokeWidth={s.derived ? 1.9 : 2} strokeDasharray={s.derived ? '4 2.5' : ''} />
+                strokeWidth={s.derived ? 2 : 1.8} strokeDasharray={s.derived ? '' : '4 2.5'} />
             ))}
 
             <line x1={x(nowIdx)} x2={x(nowIdx)} y1={padT} y2={padT + innerH} className="fc-now" />
@@ -567,10 +569,15 @@ function ForecastChart({ hours, lat, lon }) {
                 {WEEKDAY[date.getDay()]} {date.getDate()}.
               </text>
             ))}
+
+            {series.length === 0 && (
+              <text x={x(nowIdx) + 40} y={padT + innerH / 2} className="fc-empty">
+                keine Werte gewählt
+              </text>
+            )}
           </svg>
         </div>
       </div>
-      )}
 
       <div className="fc-readout">
         <span className="fc-rtime">{dateStr} {hhmm}</span>
@@ -586,8 +593,8 @@ function ForecastChart({ hours, lat, lon }) {
       </div>
 
       <p className="forecast-note">
-        Basiswerte (durchgezogen) an/aus – abgeleitete/virtuelle Größen (gestrichelt: rel. Feuchte, effektive Sonne, Gefühlt) erscheinen automatisch.
-        {' '}„Gefühlt“ (ab Lufttemp.) enthält immer die Luftfeuchte; Wind &amp; Sonne fliessen nur ein, wenn aktiv. Tippen wählt einen Zeitpunkt; Schattierung = Modell-Spanne.
+        Basiswerte (gestrichelt) an/aus – abgeleitete Größen (durchgezogen: rel. Feuchte, effektive Sonne, Gefühlt) erscheinen automatisch.
+        {' '}„Gefühlt“ erscheint ab Lufttemp. + einem Faktor (Feuchte, Wind oder Sonne) und bezieht nur die aktiven Faktoren ein (ohne Feuchte-Wahl: neutrale 50 %). Tippen wählt einen Zeitpunkt; Schattierung = Modell-Spanne.
       </p>
     </div>
   )

@@ -557,6 +557,7 @@ input[type='range'] {
 .fc-daygrid  { stroke: var(--muted);  stroke-width: 1.2; opacity: 0.55; }
 .fc-grid6    { stroke: var(--border); stroke-width: 1; opacity: 0.5; }
 .fc-gridminor{ stroke: var(--border); stroke-width: 1; opacity: 0.18; }
+.fc-empty { fill: var(--muted); font-size: 11px; }
 .fc-ylab, .fc-xlab, .fc-hourlab {
   fill: var(--muted);
   font-size: 9px;
