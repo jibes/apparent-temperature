@@ -3,23 +3,25 @@
 // per-variable MEDIAN — robust to a single model outlier. The model spread is
 // returned as a free uncertainty estimate.
 const BASE = 'https://api.open-meteo.com/v1/forecast'
-const MODELS = [
-  'icon_seamless',      // DWD (Germany)
-  'gfs_seamless',       // NOAA (USA)
-  'ecmwf_ifs025',       // ECMWF (Europe)
-  'gem_seamless',       // Environment Canada
-  'meteofrance_seamless', // Météo-France
-]
+
+// Ensemble members. Display metadata (name, native grid resolution) is shown in
+// the app's methodology section; resolutions are approximate because "seamless"
+// blends a fine regional model near its home region with a coarser global one.
+export const MODEL_INFO = {
+  icon_seamless:        { name: 'DWD ICON',     org: 'Deutscher Wetterdienst', res: '2–11 km' },
+  gfs_seamless:         { name: 'NOAA GFS',     org: 'USA',                    res: '3–25 km' },
+  ecmwf_ifs025:         { name: 'ECMWF IFS',    org: 'Europa',                 res: '25 km' },
+  gem_seamless:         { name: 'GEM',          org: 'Kanada',                 res: '2.5–15 km' },
+  meteofrance_seamless: { name: 'Météo-France', org: 'Frankreich',             res: '1.5–25 km' },
+}
+const MODELS = Object.keys(MODEL_INFO)
+
 // Instant variables are values AT the timestamp. Open-Meteo's hourly
 // shortwave_radiation is a MEAN of the *preceding* hour (timestamp = end of
 // interval), which is misaligned with the instant temp/RH/wind/cloud. We use
 // shortwave_radiation_instant so every input to a felt-temp represents the same
-// instant T (and keep the mean as a fallback if a model omits the instant one).
+// instant T (the plain mean is requested only as a whole-ensemble fallback).
 const INSTANT_VARS = ['temperature_2m', 'relative_humidity_2m', 'wind_speed_10m', 'cloud_cover']
-// Note: in the `current` block radiation is a preceding-15-min mean (not a true
-// instant); close enough for the unused-by-UI `solar` field. The hourly block is
-// where alignment matters, and there we request the true instant variant.
-const CURRENT_VARS = [...INSTANT_VARS, 'shortwave_radiation']
 const HOURLY_VARS  = [...INSTANT_VARS, 'shortwave_radiation_instant', 'shortwave_radiation']
 
 function median(xs) {
@@ -43,29 +45,27 @@ export function toEpoch(t, offsetMs) {
   return Date.parse(t + 'Z') - offsetMs
 }
 
-// Fetches current weather, consolidated across models.
-// Returns { temp, humidity, wind, solar, sources, spread:{temp,humidity,wind} }.
+// Fetches current weather, consolidated across models. Returns
+// { temp, humidity, wind, clouds, sources, spread, grid } where `grid` is the
+// model grid cell the values actually describe (its center + elevation) — the
+// honest answer to "how location-specific is this?".
 export async function fetchCurrentWeather(lat, lon) {
   const url =
     `${BASE}?latitude=${lat}&longitude=${lon}` +
-    `&current=${CURRENT_VARS.join(',')}` +
+    `&current=${INSTANT_VARS.join(',')}` +
     `&models=${MODELS.join(',')}` +
     `&wind_speed_unit=kmh&timezone=auto`
 
   const res = await fetch(url)
   if (!res.ok) throw new Error(`Open-Meteo ${res.status}`)
-  const c = (await res.json()).current
+  const json = await res.json()
+  const c = json.current
 
-  // With multiple models, keys are suffixed: temperature_2m_icon_seamless …
-  // Fall back to the un-suffixed key if a single model / older shape is returned.
-  const pick = v => {
-    const vals = MODELS.map(m => c[`${v}_${m}`]).filter(x => x != null && !Number.isNaN(x))
-    return vals.length ? vals : (c[v] != null ? [c[v]] : [])
-  }
+  // With multiple models requested, keys are always suffixed per model.
+  const pick = v => MODELS.map(m => c[`${v}_${m}`]).filter(x => x != null && !Number.isNaN(x))
   const temps = pick('temperature_2m')
   const rhs   = pick('relative_humidity_2m')
   const winds = pick('wind_speed_10m')
-  const sols  = pick('shortwave_radiation')
   const clds  = pick('cloud_cover')
 
   if (!temps.length) throw new Error('Open-Meteo: no model data')
@@ -75,7 +75,6 @@ export async function fetchCurrentWeather(lat, lon) {
     temp:     Math.round(median(temps) * 2) / 2,
     humidity: Math.round(median(rhs)),
     wind:     Math.round(median(winds)),
-    solar:    Math.round(median(sols) ?? 0),
     clouds:   cloudMed == null ? null : Math.round(cloudMed),
     sources:  temps.length,
     spread: {
@@ -83,13 +82,20 @@ export async function fetchCurrentWeather(lat, lon) {
       humidity: spread(rhs),
       wind:     spread(winds),
     },
+    grid: {
+      lat:       json.latitude,
+      lon:       json.longitude,
+      elevation: json.elevation ?? null,
+      timezone:  json.timezone ?? null,
+    },
   }
 }
 
-// Fetches up to `hours` of hourly forecast across the full 16-day horizon,
-// keeping the per-model samples so callers can build a confidence band.
-// Each entry: { time, temp, humidity, wind, solar (medians),
-//               samples: [{ t, rh, w, s }] one per model that has data }.
+// Fetches up to `futureHours` of hourly forecast (plus `pastHours` of history),
+// keeping the per-model samples so callers can build a confidence band and
+// attribute members. Each entry:
+// { time, ts, temp, humidity, wind, solar (medians),
+//   samples: [{ m, t, rh, w, s, c }] one per model with valid base data }.
 export async function fetchHourlyForecast(lat, lon, futureHours = 384, pastHours = 6) {
   const url =
     `${BASE}?latitude=${lat}&longitude=${lon}` +
@@ -107,29 +113,22 @@ export async function fetchHourlyForecast(lat, lon, futureHours = 384, pastHours
   // So we also compute the true UTC instant `ts` using the location offset.
   const offsetMs = (json.utc_offset_seconds ?? 0) * 1000
 
-  // Build one sample per model (suffixed keys), keeping only complete rows.
+  // One sample per model (suffixed keys), keeping only rows with valid base data.
   const sampleAt = i => {
+    // Radiation: don't mix conventions within one hour's ensemble. Use the
+    // preceding-hour mean only if NO model provides the instant value at this
+    // hour — a mixed median would skew wherever the two differ (sunrise/sunset).
+    const anyInstant = MODELS.some(m => h[`shortwave_radiation_instant_${m}`]?.[i] != null)
     const out = []
     for (const m of MODELS) {
       const t  = h[`temperature_2m_${m}`]?.[i]
       const rh = h[`relative_humidity_2m_${m}`]?.[i]
       const w  = h[`wind_speed_10m_${m}`]?.[i]
       const c  = h[`cloud_cover_${m}`]?.[i]
-      // Radiation: don't mix conventions within one hour's ensemble. Use the
-      // preceding-hour mean only if NO model provides the instant value at this
-      // hour — a mixed median would skew wherever the two differ (sunrise/sunset).
-      const anyInstant = MODELS.some(mm => h[`shortwave_radiation_instant_${mm}`]?.[i] != null)
-      const s = anyInstant
+      const s  = anyInstant
         ? h[`shortwave_radiation_instant_${m}`]?.[i]
         : h[`shortwave_radiation_${m}`]?.[i]
-      if (t != null && rh != null && w != null) out.push({ t, rh, w, s: s ?? null, c: c ?? null })
-    }
-    // Fallback to un-suffixed shape (single model).
-    if (!out.length && h.temperature_2m?.[i] != null) {
-      out.push({ t: h.temperature_2m[i], rh: h.relative_humidity_2m?.[i],
-                 w: h.wind_speed_10m?.[i],
-                 s: h.shortwave_radiation_instant?.[i] ?? h.shortwave_radiation?.[i] ?? null,
-                 c: h.cloud_cover?.[i] ?? null })
+      if (t != null && rh != null && w != null) out.push({ m, t, rh, w, s: s ?? null, c: c ?? null })
     }
     return out
   }

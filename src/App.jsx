@@ -5,7 +5,7 @@ import {
   dewPoint,
   absoluteHumidity, specificEnthalpy,
 } from './formulas.js'
-import { fetchCurrentWeather, fetchHourlyForecast, searchLocation } from './weather.js'
+import { fetchCurrentWeather, fetchHourlyForecast, searchLocation, MODEL_INFO } from './weather.js'
 import './App.css'
 
 // helpers
@@ -95,15 +95,14 @@ function Slider({ label, value, onChange, min, max, step, unit }) {
   )
 }
 
-// Range control with quick presets — used for wind & sun. Consistent layout:
-// header (label + value), preset chips, then a fine-tune slider.
+// Range control with quick presets (wind): header, preset chips, fine-tune slider.
 
-function RangeControl({ label, info, badge, presets, value, onChange, min, max, step }) {
+function RangeControl({ label, badge, presets, value, onChange, min, max, step }) {
   const active = nearestPreset(presets, value)
   return (
     <div className="control">
       <div className="control-header">
-        <span className="slider-label">{label}{info && <Info>{info}</Info>}</span>
+        <span className="slider-label">{label}</span>
         <span className="value-badge">{badge}</span>
       </div>
       <div className="preset-row">
@@ -317,10 +316,10 @@ function clearSkyAt(h, ctx) {
 const METRICS = [
   { key: 'felt',  label: 'Gefühlt', unit: '°C', dual: true, dp: 0 },
   { key: 'fcloud', label: 'Gefühlt bewölkt', unit: '°C', color: '#f472b6', dp: 0,
-    at: h => {
-      const ss = h.samples.filter(s => s.s != null)
-      return (ss.length ? ss : h.samples).map(s => utci(s.t, s.rh, s.w, meanRadiantTemp(s.t, s.s ?? 0)))
-    } },
+    // Only members that report radiation — no data must render as a gap, not as
+    // radiation 0 (which would silently mean "night/shade" and fake a value).
+    at: h => h.samples.filter(s => s.s != null)
+      .map(s => utci(s.t, s.rh, s.w, meanRadiantTemp(s.t, s.s))) },
   { key: 'temp', label: 'Lufttemp.', unit: '°C', color: '#fb923c', dp: 0, val: s => s.t },
   { key: 'wind', label: 'Wind', unit: 'km/h', color: '#94a3b8', dp: 0, val: s => s.w },
   { key: 'clouds', label: 'Bewölkung', unit: '%', color: '#cbd5e1', dp: 0, val: s => s.c },
@@ -460,7 +459,6 @@ function ForecastChart({ hours, lat, lon }) {
     setActive(a => ({ ...a, [key]: !a[key] }))
   }
 
-  const axisUnits = [...new Set(groups.map(g => g.metric.unit))].join(' · ')
 
   return (
     <div className="forecast" ref={wrapRef}>
@@ -561,11 +559,56 @@ function ForecastChart({ hours, lat, lon }) {
       </div>
       )}
       <p className="forecast-note">
-        {single ? `Achse in ${axisUnits}. ` : 'Werte je Reihe eigenständig skaliert. '}
+        {single ? `Achse in ${groups[0].metric.unit}. ` : 'Werte je Reihe eigenständig skaliert. '}
         Tippen wählt einen Zeitpunkt. Schattierung = Modell-Spanne.
       </p>
     </div>
   )
+}
+
+// Great-circle distance [km] — how far the model grid cell sits from the
+// requested point.
+function distKm(lat1, lon1, lat2, lon2) {
+  const rad = Math.PI / 180
+  const dLat = (lat2 - lat1) * rad, dLon = (lon2 - lon1) * rad
+  const a = Math.sin(dLat / 2) ** 2 +
+            Math.cos(lat1 * rad) * Math.cos(lat2 * rad) * Math.sin(dLon / 2) ** 2
+  return 2 * 6371 * Math.asin(Math.sqrt(a))
+}
+
+// Ensemble attribution from the per-model samples: which member provides which
+// variables right now, and how far into the future each one reaches.
+function ensembleInfo(hours) {
+  if (!hours || !hours.length) return null
+  const now = Date.now()
+  const nowIdx = Math.max(0, hours.findIndex(h => h.ts + 3600000 > now))
+  const nowSamples = hours[nowIdx].samples
+
+  const members = Object.keys(MODEL_INFO).map(key => {
+    let lastTs = null, rad = false, cloud = false
+    for (const h of hours) {
+      const s = h.samples.find(x => x.m === key)
+      if (!s) continue
+      lastTs = h.ts
+      if (s.s != null) rad = true
+      if (s.c != null) cloud = true
+    }
+    if (lastTs == null) return null
+    return {
+      key, ...MODEL_INFO[key], rad, cloud,
+      horizonDays: Math.max(0, Math.round((lastTs - now) / 86400000)),
+    }
+  }).filter(Boolean)
+
+  const count = f => nowSamples.filter(f).length
+  return {
+    members,
+    now: {
+      base:  nowSamples.length,
+      rad:   count(s => s.s != null),
+      cloud: count(s => s.c != null),
+    },
+  }
 }
 
 function FeltCard({ side, icon, feltTemp, airTemp }) {
@@ -594,6 +637,8 @@ function FeltTab({
   const feltSun   = utci(outTemp, outRH, wind, TrSun)
   const dp        = dewPoint(outTemp, outRH)
   const ah        = absoluteHumidity(outTemp, outRH)
+  const ens       = ensembleInfo(hours)
+  const grid      = wxMeta?.grid
 
   return (
     <>
@@ -685,7 +730,29 @@ function FeltTab({
           <p><strong>UTCI</strong> – Bröde et al. (2012). Universeller thermischer Klimaindex: 210-Term-Polynom 6. Grades in Lufttemperatur, Windgeschwindigkeit, mittlerer Strahlungstemperatur und Dampfdruck. Windlimit: 0.5–17 m/s.</p>
           <p><strong>Schatten vs. Sonne</strong> – die beiden Karten zeigen die Spanne: Schatten ohne Strahlung (Tmrt = Luft), Sonne bei klarem Himmel. Das Klarhimmel-Maximum kommt aus dem Sonnenstand (NOAA-Algorithmus: Datum, Uhrzeit, Breiten- &amp; Längengrad) und dem Haurwitz-Modell – im Winter und abends schwächer, nachts null.</p>
           <p><strong>Strahlungstemperatur</strong> – vereinfachte lineare Näherung <code>Tmrt = T + 0.025·I</code> aus der Globalstrahlung I [W/m²].</p>
-          <p><strong>Magnus-Tetens</strong> (Alduchov & Eskridge 1996): <code>e_s = 6.1078·exp(17.625T / (243.04+T))</code>. Taupunkt durch Invertierung. Abs. Feuchte: <code>rho_w = 216.7·e / T_K</code>.</p>
+          <p><strong>Magnus-Tetens</strong> (Alduchov & Eskridge 1996): <code>e_s = 6.1094·exp(17.625T / (243.04+T))</code>. Taupunkt durch Invertierung. Abs. Feuchte: <code>rho_w = 216.7·e / T_K</code>.</p>
+
+          {ens && (
+            <>
+              <p><strong>Datenbasis</strong> – Konsens (Median) aus den Wettermodellen via Open-Meteo. Mitglieder je Größe (jetzt): Temperatur / Feuchte / Wind <strong>{ens.now.base}</strong> · Sonnenstrahlung <strong>{ens.now.rad}</strong> · Bewölkung <strong>{ens.now.cloud}</strong>. Abgeleitete Größen erben die Zahl ihrer Eingänge (gefühlt Schatten/Sonne: {ens.now.base}, gefühlt bewölkt: {ens.now.rad}); „Sonne (klar)“ ist reine Astronomie (kein Modell). Mit wachsendem Horizont fallen Modelle nacheinander aus – die Spannen im Verlauf stützen sich hinten auf weniger Mitglieder.</p>
+              <ul className="model-list">
+                {ens.members.map(m => (
+                  <li key={m.key}>
+                    <strong>{m.name}</strong> ({m.org}, ~{m.res}) – reicht ~{m.horizonDays} Tage
+                    {!m.rad && ' · ohne Strahlung'}
+                    {!m.cloud && ' · ohne Bewölkung'}
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+          {grid && (
+            <p><strong>Ortsauflösung</strong> – die Werte gelten für die Modell-Gitterzelle um {grid.lat.toFixed(2)}°N, {grid.lon.toFixed(2)}°O
+              {grid.elevation != null && <> auf {Math.round(grid.elevation)} m ü. M.</>}
+              {`, ~${fmt1(distKm(lat, lon, grid.lat, grid.lon))} km vom gewählten Punkt`}.
+              Mikroklima (Straßenschluchten, Hanglagen, Gewässernähe) löst kein Modell auf.</p>
+          )}
+
           <p className="muted">UTCI nimmt eine gehende Person in angepasster Kleidung an. Richtwerte, keine Messwerte.</p>
         </div>
       </details>
@@ -836,7 +903,7 @@ export default function App() {
   function applyWeather(w) {
     setOutTemp(w.temp); setOutRH(w.humidity); setWind(w.wind)
     if (w.clouds != null) setClouds(w.clouds)
-    if (w.sources) setWxMeta({ sources: w.sources, spread: w.spread })
+    if (w.sources) setWxMeta({ sources: w.sources, spread: w.spread, grid: w.grid })
     setUpdatedAt(Date.now())
     if (!prefilledRef.current) {
       setInTemp(w.temp)
@@ -944,8 +1011,11 @@ export default function App() {
           onSearch={searchWeather}
           onLocate={loadWeather}
         />
-        {updatedAt && geoStatus === 'ok' && (
-          <p className="freshness" key={nowTick}>{agoLabel(updatedAt)}</p>
+        {/* keep showing staleness even if a later refresh failed — that's when it matters */}
+        {updatedAt && (
+          <p className="freshness" key={nowTick}>
+            {agoLabel(updatedAt)}{geoStatus === 'error' ? ' · Aktualisierung fehlgeschlagen' : ''}
+          </p>
         )}
       </header>
 

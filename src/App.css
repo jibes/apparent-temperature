@@ -682,6 +682,17 @@ input[type='range'] {
 
 .formula-body strong { color: var(--text); }
 
+.model-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.76rem;
+  color: var(--muted);
+  padding-left: 0.2rem;
+}
+.model-list li::before { content: '·'; margin-right: 0.4rem; color: var(--accent); }
+
 code {
   font-family: 'SF Mono', 'Fira Code', monospace;
   background: #0d0f18;

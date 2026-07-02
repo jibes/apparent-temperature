@@ -29,6 +29,7 @@ function mockFetch(payload, ok = true, status = 200) {
 describe('fetchCurrentWeather (multi-model median)', () => {
   it('takes the per-variable median across models', async () => {
     mockFetch({
+      latitude: 52.26, longitude: 13.48, elevation: 34,
       current: {
         // three models with different values → median is robust to the outlier
         temperature_2m_icon_seamless: 20,
@@ -40,9 +41,6 @@ describe('fetchCurrentWeather (multi-model median)', () => {
         wind_speed_10m_icon_seamless: 10,
         wind_speed_10m_gfs_seamless:  12,
         wind_speed_10m_ecmwf_ifs025:  20,
-        shortwave_radiation_icon_seamless: 300,
-        shortwave_radiation_gfs_seamless:  320,
-        shortwave_radiation_ecmwf_ifs025:  280,
         cloud_cover_icon_seamless: 40,
         cloud_cover_gfs_seamless:  60,
         cloud_cover_ecmwf_ifs025:  50,
@@ -52,10 +50,11 @@ describe('fetchCurrentWeather (multi-model median)', () => {
     expect(w.temp).toBe(22)      // median(20,22,30) = 22, not the 24 a mean would give
     expect(w.humidity).toBe(55)
     expect(w.wind).toBe(12)
-    expect(w.solar).toBe(300)
     expect(w.clouds).toBe(50)
     expect(w.sources).toBe(3)
     expect(w.spread.temp).toBe(10) // 30 − 20
+    // grid metadata: the cell the values actually describe
+    expect(w.grid).toMatchObject({ lat: 52.26, lon: 13.48, elevation: 34 })
   })
 
   it('throws when no model returned data', async () => {
@@ -154,7 +153,9 @@ describe('fetchHourlyForecast (multi-model median)', () => {
     })
     const out = await fetchHourlyForecast(52, 13, 12, 3)
     expect(out.length).toBeGreaterThan(0)
-    const [icon, gfs] = out[0].samples
+    // samples are attributed to their model (robust lookup, not order-based)
+    const icon = out[0].samples.find(s => s.m === 'icon_seamless')
+    const gfs  = out[0].samples.find(s => s.m === 'gfs_seamless')
     // icon uses the INSTANT field (200+i), not the mean (900+i), aligned to temp's hour
     expect(icon.s - 200).toBe(icon.t - 100)
     expect(icon.s - 900).not.toBe(icon.t - 100)
@@ -185,7 +186,8 @@ describe('fetchHourlyForecast (multi-model median)', () => {
       },
     })
     const out = await fetchHourlyForecast(52, 13, 12, 0)
-    const [icon, gfs] = out[0].samples
+    const icon = out[0].samples.find(s => s.m === 'icon_seamless')
+    const gfs  = out[0].samples.find(s => s.m === 'gfs_seamless')
     // No instant anywhere → both use their hour-mean, same hour as their temp
     expect(icon.s - 300).toBe(icon.t - 100)
     expect(gfs.s - 320).toBe(gfs.t - 100)
