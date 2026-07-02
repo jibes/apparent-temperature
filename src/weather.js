@@ -16,7 +16,10 @@ const MODELS = [
 // shortwave_radiation_instant so every input to a felt-temp represents the same
 // instant T (and keep the mean as a fallback if a model omits the instant one).
 const INSTANT_VARS = ['temperature_2m', 'relative_humidity_2m', 'wind_speed_10m', 'cloud_cover']
-const CURRENT_VARS = [...INSTANT_VARS, 'shortwave_radiation']            // current block is instantaneous
+// Note: in the `current` block radiation is a preceding-15-min mean (not a true
+// instant); close enough for the unused-by-UI `solar` field. The hourly block is
+// where alignment matters, and there we request the true instant variant.
+const CURRENT_VARS = [...INSTANT_VARS, 'shortwave_radiation']
 const HOURLY_VARS  = [...INSTANT_VARS, 'shortwave_radiation_instant', 'shortwave_radiation']
 
 function median(xs) {
@@ -111,8 +114,14 @@ export async function fetchHourlyForecast(lat, lon, futureHours = 384, pastHours
       const t  = h[`temperature_2m_${m}`]?.[i]
       const rh = h[`relative_humidity_2m_${m}`]?.[i]
       const w  = h[`wind_speed_10m_${m}`]?.[i]
-      const s  = h[`shortwave_radiation_instant_${m}`]?.[i] ?? h[`shortwave_radiation_${m}`]?.[i]
       const c  = h[`cloud_cover_${m}`]?.[i]
+      // Radiation: don't mix conventions within one hour's ensemble. Use the
+      // preceding-hour mean only if NO model provides the instant value at this
+      // hour — a mixed median would skew wherever the two differ (sunrise/sunset).
+      const anyInstant = MODELS.some(mm => h[`shortwave_radiation_instant_${mm}`]?.[i] != null)
+      const s = anyInstant
+        ? h[`shortwave_radiation_instant_${m}`]?.[i]
+        : h[`shortwave_radiation_${m}`]?.[i]
       if (t != null && rh != null && w != null) out.push({ t, rh, w, s: s ?? null, c: c ?? null })
     }
     // Fallback to un-suffixed shape (single model).

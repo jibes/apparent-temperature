@@ -158,11 +158,37 @@ describe('fetchHourlyForecast (multi-model median)', () => {
     // icon uses the INSTANT field (200+i), not the mean (900+i), aligned to temp's hour
     expect(icon.s - 200).toBe(icon.t - 100)
     expect(icon.s - 900).not.toBe(icon.t - 100)
-    // gfs falls back to the hour-mean (300+i), still the same hour as its temp
-    expect(gfs.s - 300).toBe(gfs.t - 100)
+    // gfs has no instant value; since icon provides one, gfs must NOT fall back
+    // to its hour-mean — mixing conventions in one ensemble would skew the median
+    expect(gfs.s).toBeNull()
     // other fields parsed
     expect(icon.c).toBe(40)
     expect(gfs.rh).toBe(60)
+  })
+
+  it('pipeline: hour-mean fallback engages only when NO model has instant radiation', async () => {
+    const N = 24
+    const base = Date.now() - 3600000
+    const times = Array.from({ length: N }, (_, i) => new Date(base + i * 3600000).toISOString())
+    const idx = Array.from({ length: N }, (_, i) => i)
+    mockFetch({
+      hourly: {
+        time: times,
+        temperature_2m_icon_seamless: idx.map(i => 100 + i),
+        relative_humidity_2m_icon_seamless: idx.map(() => 50),
+        wind_speed_10m_icon_seamless: idx.map(() => 10),
+        shortwave_radiation_icon_seamless: idx.map(i => 300 + i), // mean only
+        temperature_2m_gfs_seamless: idx.map(i => 100 + i),
+        relative_humidity_2m_gfs_seamless: idx.map(() => 60),
+        wind_speed_10m_gfs_seamless: idx.map(() => 12),
+        shortwave_radiation_gfs_seamless: idx.map(i => 320 + i),  // mean only
+      },
+    })
+    const out = await fetchHourlyForecast(52, 13, 12, 0)
+    const [icon, gfs] = out[0].samples
+    // No instant anywhere → both use their hour-mean, same hour as their temp
+    expect(icon.s - 300).toBe(icon.t - 100)
+    expect(gfs.s - 320).toBe(gfs.t - 100)
   })
 })
 
