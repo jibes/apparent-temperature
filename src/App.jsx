@@ -327,10 +327,13 @@ const BASES = [
 ]
 
 // `deps` = base keys that must all be active for the derived line to appear.
+// Gefühlt needs only temp: humidity is intrinsic to the air (always folded into
+// UTCI from the forecast), while Wind and Sonne are optional exposure factors
+// that refine it when active.
 const DERIVED = [
   { key: 'rh',     label: 'rel. Feuchte',   unit: '%',    color: '#38bdf8', dp: 0, deps: ['temp', 'ah'], val: s => s.rh },
   { key: 'effsun', label: 'Sonne effektiv', unit: 'W/m²', color: '#f59e0b', dp: 0, deps: ['csun', 'clouds'], val: s => s.s },
-  { key: 'felt',   label: 'Gefühlt',        unit: '°C',   color: '#f472b6', dp: 0, deps: ['temp', 'ah'], felt: true },
+  { key: 'felt',   label: 'Gefühlt',        unit: '°C',   color: '#f472b6', dp: 0, deps: ['temp'], felt: true },
 ]
 
 // A "nice" gridline step giving ~5 divisions over the range (1/2/5 × 10ⁿ).
@@ -584,7 +587,7 @@ function ForecastChart({ hours, lat, lon }) {
 
       <p className="forecast-note">
         Basiswerte (gestrichelt) an/aus – abgeleitete Größen (durchgezogen: rel. Feuchte, effektive Sonne, Gefühlt) erscheinen automatisch.
-        {' '}„Gefühlt“ bezieht die aktiven Faktoren ein (Wind, Sonne, Bewölkung). Tippen wählt einen Zeitpunkt; Schattierung = Modell-Spanne.
+        {' '}„Gefühlt“ (ab Lufttemp.) enthält immer die Luftfeuchte; Wind &amp; Sonne fliessen nur ein, wenn aktiv. Tippen wählt einen Zeitpunkt; Schattierung = Modell-Spanne.
       </p>
     </div>
   )
