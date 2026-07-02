@@ -62,6 +62,24 @@ describe('fetchCurrentWeather (multi-model median)', () => {
     await expect(fetchCurrentWeather(0, 0)).rejects.toThrow(/no model data/)
   })
 
+  // REGRESSION: the current block is not guaranteed to suffix keys per model.
+  // Removing this fallback once broke all live fetches — keep it covered.
+  it('accepts an un-suffixed current block', async () => {
+    mockFetch({
+      latitude: 52, longitude: 13,
+      current: {
+        temperature_2m: 21, relative_humidity_2m: 55,
+        wind_speed_10m: 9, cloud_cover: 30,
+      },
+    })
+    const w = await fetchCurrentWeather(52, 13)
+    expect(w.temp).toBe(21)
+    expect(w.humidity).toBe(55)
+    expect(w.wind).toBe(9)
+    expect(w.clouds).toBe(30)
+    expect(w.sources).toBe(1)
+  })
+
   it('throws on HTTP error', async () => {
     mockFetch({}, false, 503)
     await expect(fetchCurrentWeather(0, 0)).rejects.toThrow(/503/)
@@ -121,6 +139,25 @@ describe('fetchHourlyForecast (multi-model median)', () => {
   it('throws on HTTP error', async () => {
     mockFetch({}, false, 500)
     await expect(fetchHourlyForecast(0, 0)).rejects.toThrow(/500/)
+  })
+
+  it('accepts an un-suffixed hourly block (regression)', async () => {
+    const base = Date.now() - 3600000
+    const times = Array.from({ length: 12 }, (_, i) => new Date(base + i * 3600000).toISOString())
+    mockFetch({
+      hourly: {
+        time: times,
+        temperature_2m: times.map(() => 20),
+        relative_humidity_2m: times.map(() => 50),
+        wind_speed_10m: times.map(() => 10),
+        shortwave_radiation_instant: times.map(() => 250),
+        cloud_cover: times.map(() => 20),
+      },
+    })
+    const out = await fetchHourlyForecast(52, 13, 6, 0)
+    expect(out.length).toBeGreaterThan(0)
+    expect(out[0].samples[0]).toMatchObject({ m: 'merged', t: 20, s: 250, c: 20 })
+    expect(out[0].temp).toBe(20)
   })
 
   // Boundary/integration coverage: run the real parse pipeline against a frozen

@@ -746,7 +746,7 @@ function FeltTab({
               </ul>
             </>
           )}
-          {grid && (
+          {grid && grid.lat != null && grid.lon != null && (
             <p><strong>Ortsauflösung</strong> – die Werte gelten für die Modell-Gitterzelle um {grid.lat.toFixed(2)}°N, {grid.lon.toFixed(2)}°O
               {grid.elevation != null && <> auf {Math.round(grid.elevation)} m ü. M.</>}
               {`, ~${fmt1(distKm(lat, lon, grid.lat, grid.lon))} km vom gewählten Punkt`}.

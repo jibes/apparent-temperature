@@ -61,8 +61,13 @@ export async function fetchCurrentWeather(lat, lon) {
   const json = await res.json()
   const c = json.current
 
-  // With multiple models requested, keys are always suffixed per model.
-  const pick = v => MODELS.map(m => c[`${v}_${m}`]).filter(x => x != null && !Number.isNaN(x))
+  // Hourly responses suffix keys per model, but the `current` block is NOT
+  // guaranteed to — removing this fallback broke live fetches ("Standort nicht
+  // verfügbar"). Keep it: prefer suffixed keys, else accept the plain key.
+  const pick = v => {
+    const vals = MODELS.map(m => c[`${v}_${m}`]).filter(x => x != null && !Number.isNaN(x))
+    return vals.length ? vals : (c[v] != null && !Number.isNaN(c[v]) ? [c[v]] : [])
+  }
   const temps = pick('temperature_2m')
   const rhs   = pick('relative_humidity_2m')
   const winds = pick('wind_speed_10m')
@@ -129,6 +134,15 @@ export async function fetchHourlyForecast(lat, lon, futureHours = 384, pastHours
         ? h[`shortwave_radiation_instant_${m}`]?.[i]
         : h[`shortwave_radiation_${m}`]?.[i]
       if (t != null && rh != null && w != null) out.push({ m, t, rh, w, s: s ?? null, c: c ?? null })
+    }
+    // Un-suffixed shape (API served a single/merged model despite models=…):
+    // same load-bearing fallback as in fetchCurrentWeather.
+    if (!out.length && h.temperature_2m?.[i] != null) {
+      out.push({ m: 'merged',
+                 t: h.temperature_2m[i], rh: h.relative_humidity_2m?.[i],
+                 w: h.wind_speed_10m?.[i],
+                 s: h.shortwave_radiation_instant?.[i] ?? h.shortwave_radiation?.[i] ?? null,
+                 c: h.cloud_cover?.[i] ?? null })
     }
     return out
   }
