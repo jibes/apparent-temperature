@@ -590,6 +590,7 @@ input[type='range'] {
 .fc-rval.sun   { color: #fbbf24; }
 .fc-rval.shade { color: #7dd3fc; }
 .fc-rval em { font-style: normal; font-weight: 600; opacity: 0.7; font-size: 0.86em; }
+.fc-rval:not(.derived) { opacity: 0.78; font-weight: 600; } /* base inputs, dimmer than results */
 .fc-rmodels { margin-left: auto; font-size: 0.7rem; color: var(--muted); }
 .fc-band { stroke: none; }
 .fc-band.sun   { fill: #fbbf24; opacity: 0.16; }

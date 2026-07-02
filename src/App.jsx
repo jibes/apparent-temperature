@@ -313,21 +313,24 @@ function clearSkyAt(h, ctx) {
 // returns the per-hour value array (one per model sample, or a single value for
 // deterministic quantities); `val` is shorthand for a simple per-sample value.
 // `dp` = decimals in the readout.
-const METRICS = [
-  { key: 'felt',  label: 'Gefühlt', unit: '°C', dual: true, dp: 0 },
-  { key: 'fcloud', label: 'Gefühlt bewölkt', unit: '°C', color: '#f472b6', dp: 0,
-    // Only members that report radiation — no data must render as a gap, not as
-    // radiation 0 (which would silently mean "night/shade" and fake a value).
-    at: h => h.samples.filter(s => s.s != null)
-      .map(s => utci(s.t, s.rh, s.w, meanRadiantTemp(s.t, s.s))) },
-  { key: 'temp', label: 'Lufttemp.', unit: '°C', color: '#fb923c', dp: 0, val: s => s.t },
-  { key: 'wind', label: 'Wind', unit: 'km/h', color: '#94a3b8', dp: 0, val: s => s.w },
-  { key: 'clouds', label: 'Bewölkung', unit: '%', color: '#cbd5e1', dp: 0, val: s => s.c },
-  { key: 'rh',   label: 'rel. Feuchte', unit: '%', color: '#38bdf8', dp: 0, val: s => s.rh },
-  { key: 'ah',   label: 'abs. Feuchte', unit: 'g/m³', color: '#22d3ee', dp: 1, val: s => absoluteHumidity(s.t, s.rh) },
-  { key: 'enth', label: 'Enthalpie', unit: 'kJ/kg', color: '#a78bfa', dp: 0, val: s => specificEnthalpy(s.t, s.rh) },
-  { key: 'rsun', label: 'Sonne (real)', unit: 'W/m²', color: '#f59e0b', dp: 0, val: s => s.s },
-  { key: 'csun', label: 'Sonne (klar)', unit: 'W/m²', color: '#fde047', dp: 0, at: (h, ctx) => [clearSkyAt(h, ctx)] },
+// A derivation graph, not a flat list. The user toggles BASE inputs; DERIVED
+// outputs appear automatically once their input bases are active. No mediator
+// lines, no hardcoded shade/sun pair — "Gefühlt" is one line that composes
+// whatever bases are on. `val(s)` reads a model sample; `hourVal(h,ctx)` is a
+// deterministic per-hour value (no ensemble spread). `dp` = readout decimals.
+const BASES = [
+  { key: 'temp',   label: 'Lufttemp.',    unit: '°C',   color: '#fb923c', dp: 0, val: s => s.t },
+  { key: 'ah',     label: 'Abs. Feuchte', unit: 'g/m³', color: '#22d3ee', dp: 1, val: s => absoluteHumidity(s.t, s.rh) },
+  { key: 'wind',   label: 'Wind',         unit: 'km/h', color: '#94a3b8', dp: 0, val: s => s.w },
+  { key: 'csun',   label: 'Sonne (klar)', unit: 'W/m²', color: '#fde047', dp: 0, hourVal: clearSkyAt },
+  { key: 'clouds', label: 'Bewölkung',    unit: '%',    color: '#cbd5e1', dp: 0, val: s => s.c },
+]
+
+// `deps` = base keys that must all be active for the derived line to appear.
+const DERIVED = [
+  { key: 'rh',     label: 'rel. Feuchte',   unit: '%',    color: '#38bdf8', dp: 0, deps: ['temp', 'ah'], val: s => s.rh },
+  { key: 'effsun', label: 'Sonne effektiv', unit: 'W/m²', color: '#f59e0b', dp: 0, deps: ['csun', 'clouds'], val: s => s.s },
+  { key: 'felt',   label: 'Gefühlt',        unit: '°C',   color: '#f472b6', dp: 0, deps: ['temp', 'ah'], felt: true },
 ]
 
 // A "nice" gridline step giving ~5 divisions over the range (1/2/5 × 10ⁿ).
@@ -339,38 +342,63 @@ function niceStep(range) {
   return (n < 1.5 ? 1 : n < 3 ? 2 : n < 7 ? 5 : 10) * pow
 }
 
-// Value series (with confidence band) for one metric across all hours, on its
-// own y-scale so metrics with different units can be overlaid.
-function seriesForMetric(m, hours, ctx) {
-  const defs = m.dual
-    ? [
-        { key: 'shade', color: '#7dd3fc', icon: '🌳', at: h => h.samples.map(s => utci(s.t, s.rh, s.w, s.t)) },
-        { key: 'sun',   color: '#fbbf24', icon: '☀️', at: (h, c) => {
-            const I = clearSkyAt(h, c) // clear-sky sun, consistent with the felt cards
-            return h.samples.map(s => utci(s.t, s.rh, s.w, meanRadiantTemp(s.t, I)))
-          } },
-      ]
-    : [{ key: m.key, color: m.color, icon: '', at: m.at ?? (h => h.samples.map(m.val)) }]
-
-  const series = defs.map(d => ({ key: d.key, color: d.color, icon: d.icon, points: hours.map(h => stats(d.at(h, ctx))) }))
+// A metric's own y-scale from its per-hour points (each {med,lo,hi} or null).
+function pointsScale(points) {
   let yMin = Infinity, yMax = -Infinity
-  for (const s of series) for (const p of s.points) { if (!p) continue; yMin = Math.min(yMin, p.lo); yMax = Math.max(yMax, p.hi) }
+  for (const p of points) { if (!p) continue; yMin = Math.min(yMin, p.lo); yMax = Math.max(yMax, p.hi) }
   if (!Number.isFinite(yMin) || !Number.isFinite(yMax)) { yMin = 0; yMax = 1 } // no data → avoid Inf/NaN
   const step = niceStep(yMax - yMin)
   yMin = Math.floor(yMin / step) * step
   yMax = Math.ceil(yMax / step) * step
   if (yMax <= yMin) yMax = yMin + step
-  return { metric: m, series, yMin, yMax, step }
+  return { yMin, yMax, step }
 }
 
-// Multi-day forecast chart. Metrics toggle independently and overlay; each is
-// scaled to its own range. Width is measured for crisp rendering.
+// "Gefühlt" per hour = UTCI(air, humidity, [wind], [radiation]) composed from
+// the active bases: wind cools only if Wind is on; radiation comes from the
+// effective (cloud-adjusted) sun when both Sonne & Bewölkung are on, from clear
+// sun when only Sonne is on, and is absent (shade) otherwise.
+function feltPoints(hours, ctx, active) {
+  return hours.map(h => {
+    const clearSky = clearSkyAt(h, ctx)
+    return stats(h.samples.map(s => {
+      const windUsed = active.wind ? s.w : 0
+      const Tr = (active.csun && active.clouds) ? meanRadiantTemp(s.t, s.s ?? clearSky)
+               : active.csun                    ? meanRadiantTemp(s.t, clearSky)
+               :                                  s.t
+      return utci(s.t, s.rh, windUsed, Tr)
+    }))
+  })
+}
+
+// Build the flat list of scaled series to draw from the active base set.
+function buildSeries(hours, ctx, active) {
+  const pointsFor = def => def.hourVal
+    ? hours.map(h => stats([def.hourVal(h, ctx)]))
+    : hours.map(h => stats(h.samples.map(def.val)))
+
+  const out = []
+  for (const b of BASES) {
+    if (!active[b.key]) continue
+    const points = pointsFor(b)
+    out.push({ ...b, derived: false, points, ...pointsScale(points) })
+  }
+  for (const d of DERIVED) {
+    if (!d.deps.every(k => active[k])) continue
+    const points = d.felt ? feltPoints(hours, ctx, active) : pointsFor(d)
+    out.push({ ...d, derived: true, points, ...pointsScale(points) })
+  }
+  return out
+}
+
+// Multi-day forecast chart. Toggle BASE inputs; DERIVED outputs appear when
+// their inputs are active. Each series is scaled to its own range and overlaid.
 function ForecastChart({ hours, lat, lon }) {
   const wrapRef = useRef()
   const svgRef = useRef()
   const [w, setW] = useState(360)
   const [selIdx, setSelIdx] = useState(null) // null → defaults to "now"
-  const [active, setActive] = useState({ felt: true })
+  const [active, setActive] = useState({ temp: true, ah: true }) // → shows temp, abs.F, rh, Gefühlt
   useEffect(() => {
     if (!wrapRef.current) return
     const ro = new ResizeObserver(es => setW(es[0].contentRect.width))
@@ -378,17 +406,16 @@ function ForecastChart({ hours, lat, lon }) {
     return () => ro.disconnect()
   }, [])
 
-  const activeKey = METRICS.filter(m => active[m.key]).map(m => m.key).join(',')
-  const groups = useMemo(() => {
+  const activeKey = Object.keys(active).filter(k => active[k]).sort().join(',')
+  const series = useMemo(() => {
     if (!hours || !hours.length) return null
-    const ctx = { lat, lon }
-    return METRICS.filter(m => active[m.key]).map(m => seriesForMetric(m, hours, ctx))
+    return buildSeries(hours, { lat, lon }, active)
   }, [hours, activeKey, lat, lon])
 
-  if (!groups) return null
+  if (!series) return null
 
   const H = 175, padT = 10, padB = 24, padR = 10
-  const single = groups.length === 1
+  const single = series.length === 1
   const axisW = single ? 30 : 6
   const innerH = H - padT - padB
   const n = hours.length
@@ -396,7 +423,7 @@ function ForecastChart({ hours, lat, lon }) {
   const pxPerHour = Math.max(6, (w - axisW) / 24)
   const chartW = Math.round((n - 1) * pxPerHour + padR + 4)
   const x = i => 4 + i * pxPerHour
-  const ymap = g => v => padT + (1 - (v - g.yMin) / (g.yMax - g.yMin)) * innerH
+  const ymap = s => v => padT + (1 - (v - s.yMin) / (s.yMax - s.yMin)) * innerH
 
   // Paths tolerate gaps (null points, e.g. a metric a model doesn't provide).
   const linePath = (points, yf) => {
@@ -423,8 +450,8 @@ function ForecastChart({ hours, lat, lon }) {
   // else evenly-spaced unlabelled references (units would differ).
   const grid = []
   if (single) {
-    const g = groups[0], yf = ymap(g)
-    for (let v = g.yMin; v <= g.yMax + 1e-9; v += g.step) grid.push({ y: yf(v), label: g.step < 1 ? v.toFixed(1) : String(Math.round(v)) })
+    const s = series[0], yf = ymap(s)
+    for (let v = s.yMin; v <= s.yMax + 1e-9; v += s.step) grid.push({ y: yf(v), label: s.step < 1 ? v.toFixed(1) : String(Math.round(v)) })
   } else {
     for (let f = 0; f <= 4; f++) grid.push({ y: padT + (f / 4) * innerH, label: null })
   }
@@ -448,7 +475,6 @@ function ForecastChart({ hours, lat, lon }) {
   const selDate = hours[si].time
   const dateStr = `${WEEKDAY[selDate.getDay()]} ${selDate.getDate()}.${selDate.getMonth() + 1}.`
   const hhmm = `${String(selDate.getHours()).padStart(2, '0')}:00`
-  const models = hours[si].samples.length
 
   function pick(e) {
     const rect = svgRef.current.getBoundingClientRect()
@@ -459,7 +485,6 @@ function ForecastChart({ hours, lat, lon }) {
     setActive(a => ({ ...a, [key]: !a[key] }))
   }
 
-
   return (
     <div className="forecast" ref={wrapRef}>
       <div className="forecast-head">
@@ -467,37 +492,34 @@ function ForecastChart({ hours, lat, lon }) {
       </div>
 
       <div className="fc-metrics">
-        {METRICS.map(m => (
+        {BASES.map(b => (
           <button
-            key={m.key}
+            key={b.key}
             type="button"
-            className={`preset-btn ${active[m.key] ? 'active' : ''}`}
-            onClick={() => toggle(m.key)}
+            className={`preset-btn ${active[b.key] ? 'active' : ''}`}
+            onClick={() => toggle(b.key)}
           >
-            {(m.dual ? ['#7dd3fc', '#fbbf24'] : [m.color]).map((c, k) => (
-              <i key={k} className="mdot" style={{ background: c }} />
-            ))}
-            {m.label}
+            <i className="mdot" style={{ background: b.color }} />
+            {b.label}
           </button>
         ))}
       </div>
 
       <div className="fc-readout">
         <span className="fc-rtime">{dateStr} {hhmm}</span>
-        {groups.flatMap(g => g.series.map(s => {
+        {series.map(s => {
           const p = s.points[si]; if (!p) return null
-          const f = v => (g.metric.dp ? v.toFixed(g.metric.dp) : String(Math.round(v)))
+          const f = v => (s.dp ? v.toFixed(s.dp) : String(Math.round(v)))
           return (
-            <span key={g.metric.key + s.key} className="fc-rval" style={{ color: s.color }}>
-              {s.icon} {f(p.med)} {g.metric.unit} <em>{f(p.lo)}–{f(p.hi)}</em>
+            <span key={s.key} className={`fc-rval ${s.derived ? 'derived' : ''}`} style={{ color: s.color }}>
+              {s.derived ? '→ ' : ''}{s.label} {f(p.med)} {s.unit} <em>{f(p.lo)}–{f(p.hi)}</em>
             </span>
           )
-        }))}
-        <span className="fc-rmodels">{models}{' '}Mod.</span>
+        })}
       </div>
 
-      {groups.length === 0 ? (
-        <p className="forecast-note">Mindestens einen Wert wählen.</p>
+      {series.length === 0 ? (
+        <p className="forecast-note">Mindestens einen Basiswert wählen.</p>
       ) : (
       <div className="fc-plot">
         <svg className="fc-axis" width={axisW} height={H} viewBox={`0 0 ${axisW} ${H}`} aria-hidden="true">
@@ -529,20 +551,21 @@ function ForecastChart({ hours, lat, lon }) {
               <line key={i} x1={x(i)} x2={x(i)} y1={padT} y2={padT + innerH} className="fc-daygrid" />
             ))}
 
-            {groups.map(g => g.series.map(s => (
-              <path key={`b${g.metric.key}${s.key}`} d={bandPath(s.points, ymap(g))} fill={s.color} opacity="0.13" stroke="none" />
-            )))}
-            {groups.map(g => g.series.map(s => (
-              <path key={`l${g.metric.key}${s.key}`} d={linePath(s.points, ymap(g))} fill="none" stroke={s.color} strokeWidth="1.8" />
-            )))}
+            {series.map(s => (
+              <path key={`b${s.key}`} d={bandPath(s.points, ymap(s))} fill={s.color} opacity="0.13" stroke="none" />
+            ))}
+            {series.map(s => (
+              <path key={`l${s.key}`} d={linePath(s.points, ymap(s))} fill="none" stroke={s.color}
+                strokeWidth={s.derived ? 2.2 : 1.6} strokeDasharray={s.derived ? '' : '4 2'} />
+            ))}
 
             <line x1={x(nowIdx)} x2={x(nowIdx)} y1={padT} y2={padT + innerH} className="fc-now" />
             <text x={x(nowIdx) + 3} y={padT + 9} className="fc-nowlab">Jetzt</text>
 
             <line x1={x(si)} x2={x(si)} y1={padT} y2={padT + innerH} className="fc-cursor" />
-            {groups.map(g => g.series.map(s => s.points[si] && (
-              <circle key={`d${g.metric.key}${s.key}`} cx={x(si)} cy={ymap(g)(s.points[si].med)} r="3.5" fill={s.color} stroke="var(--bg)" strokeWidth="1.5" />
-            )))}
+            {series.map(s => s.points[si] && (
+              <circle key={`d${s.key}`} cx={x(si)} cy={ymap(s)(s.points[si].med)} r="3.5" fill={s.color} stroke="var(--bg)" strokeWidth="1.5" />
+            ))}
 
             {labels.map(i => (
               <text key={`h${i}`} x={x(i)} y={H - 7} className="fc-hourlab" textAnchor="middle">
@@ -559,8 +582,8 @@ function ForecastChart({ hours, lat, lon }) {
       </div>
       )}
       <p className="forecast-note">
-        {single ? `Achse in ${groups[0].metric.unit}. ` : 'Werte je Reihe eigenständig skaliert. '}
-        Tippen wählt einen Zeitpunkt. Schattierung = Modell-Spanne.
+        Basiswerte (gestrichelt) an/aus – abgeleitete Größen (durchgezogen: rel. Feuchte, effektive Sonne, Gefühlt) erscheinen automatisch.
+        {' '}„Gefühlt“ bezieht die aktiven Faktoren ein (Wind, Sonne, Bewölkung). Tippen wählt einen Zeitpunkt; Schattierung = Modell-Spanne.
       </p>
     </div>
   )
