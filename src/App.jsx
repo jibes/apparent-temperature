@@ -546,7 +546,7 @@ function ForecastChart({ hours, lat, lon }) {
             ))}
             {series.map(s => (
               <path key={`l${s.key}`} d={linePath(s.points, ymap(s))} fill="none" stroke={s.color}
-                strokeWidth={s.derived ? 2.2 : 1.6} strokeDasharray={s.derived ? '' : '4 2'} />
+                strokeWidth={s.derived ? 1.9 : 2} strokeDasharray={s.derived ? '4 2.5' : ''} />
             ))}
 
             <line x1={x(nowIdx)} x2={x(nowIdx)} y1={padT} y2={padT + innerH} className="fc-now" />
@@ -586,7 +586,7 @@ function ForecastChart({ hours, lat, lon }) {
       </div>
 
       <p className="forecast-note">
-        Basiswerte (gestrichelt) an/aus – abgeleitete Größen (durchgezogen: rel. Feuchte, effektive Sonne, Gefühlt) erscheinen automatisch.
+        Basiswerte (durchgezogen) an/aus – abgeleitete/virtuelle Größen (gestrichelt: rel. Feuchte, effektive Sonne, Gefühlt) erscheinen automatisch.
         {' '}„Gefühlt“ (ab Lufttemp.) enthält immer die Luftfeuchte; Wind &amp; Sonne fliessen nur ein, wenn aktiv. Tippen wählt einen Zeitpunkt; Schattierung = Modell-Spanne.
       </p>
     </div>
