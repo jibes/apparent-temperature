@@ -579,7 +579,8 @@ input[type='range'] {
   align-items: center;
   gap: 0.3rem 0.6rem;
   padding: 0.45rem 0.55rem;
-  margin-bottom: 0.5rem;
+  margin: 0.5rem 0 0.4rem;      /* sits below the graph now */
+  min-height: 2.4rem;           /* reserve ~2 lines so it grows quietly */
   background: #1e2235;
   border: 1px solid var(--border);
   border-radius: var(--rs);

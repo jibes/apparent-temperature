@@ -505,19 +505,6 @@ function ForecastChart({ hours, lat, lon }) {
         ))}
       </div>
 
-      <div className="fc-readout">
-        <span className="fc-rtime">{dateStr} {hhmm}</span>
-        {series.map(s => {
-          const p = s.points[si]; if (!p) return null
-          const f = v => (s.dp ? v.toFixed(s.dp) : String(Math.round(v)))
-          return (
-            <span key={s.key} className={`fc-rval ${s.derived ? 'derived' : ''}`} style={{ color: s.color }}>
-              {s.derived ? '→ ' : ''}{s.label} {f(p.med)} {s.unit} <em>{f(p.lo)}–{f(p.hi)}</em>
-            </span>
-          )
-        })}
-      </div>
-
       {series.length === 0 ? (
         <p className="forecast-note">Mindestens einen Basiswert wählen.</p>
       ) : (
@@ -581,6 +568,20 @@ function ForecastChart({ hours, lat, lon }) {
         </div>
       </div>
       )}
+
+      <div className="fc-readout">
+        <span className="fc-rtime">{dateStr} {hhmm}</span>
+        {series.map(s => {
+          const p = s.points[si]; if (!p) return null
+          const f = v => (s.dp ? v.toFixed(s.dp) : String(Math.round(v)))
+          return (
+            <span key={s.key} className={`fc-rval ${s.derived ? 'derived' : ''}`} style={{ color: s.color }}>
+              {s.derived ? '→ ' : ''}{s.label} {f(p.med)} {s.unit} <em>{f(p.lo)}–{f(p.hi)}</em>
+            </span>
+          )
+        })}
+      </div>
+
       <p className="forecast-note">
         Basiswerte (gestrichelt) an/aus – abgeleitete Größen (durchgezogen: rel. Feuchte, effektive Sonne, Gefühlt) erscheinen automatisch.
         {' '}„Gefühlt“ bezieht die aktiven Faktoren ein (Wind, Sonne, Bewölkung). Tippen wählt einen Zeitpunkt; Schattierung = Modell-Spanne.
