@@ -46,21 +46,6 @@ function colorClass(t) {
   return 'very-cold'
 }
 
-// Wind presets (Beaufort-ish), used alongside the slider.
-const WIND_LEVELS = [
-  { val: 0,  label: 'Windstill' },
-  { val: 8,  label: 'Brise' },
-  { val: 20, label: 'Mäßig' },
-  { val: 35, label: 'Frisch' },
-  { val: 60, label: 'Stürmisch' },
-]
-
-function nearestPreset(levels, v) {
-  return levels.reduce((best, lvl) =>
-    Math.abs(lvl.val - v) < Math.abs(best.val - v) ? lvl : best
-  )
-}
-
 function ventVerdict(Tin, RHin, Tout, RHout) {
   const a = ventilationAssessment(Tin, RHin, Tout, RHout)
   const dry  = a.deltaAH < -0.3
@@ -83,39 +68,6 @@ function Slider({ label, value, onChange, min, max, step, unit }) {
       <div className="control-header">
         <span className="slider-label">{label}</span>
         <span className="value-badge">{value}{' '}{unit}</span>
-      </div>
-      <input
-        type="range"
-        min={min} max={max} step={step} value={value}
-        onChange={e => onChange(Number(e.target.value))}
-        onPointerDown={e => e.currentTarget.setPointerCapture(e.pointerId)}
-        style={{ touchAction: 'pan-y' }}
-      />
-    </div>
-  )
-}
-
-// Range control with quick presets (wind): header, preset chips, fine-tune slider.
-
-function RangeControl({ label, badge, presets, value, onChange, min, max, step }) {
-  const active = nearestPreset(presets, value)
-  return (
-    <div className="control">
-      <div className="control-header">
-        <span className="slider-label">{label}</span>
-        <span className="value-badge">{badge}</span>
-      </div>
-      <div className="preset-row">
-        {presets.map(p => (
-          <button
-            key={p.label}
-            type="button"
-            className={`preset-btn ${p.val === active.val ? 'active' : ''}`}
-            onClick={() => onChange(p.val)}
-          >
-            {p.label}
-          </button>
-        ))}
       </div>
       <input
         type="range"
@@ -322,16 +274,17 @@ const BASES = [
   { key: 'temp',   label: 'Lufttemp.',    unit: '°C',   color: '#fb923c', dp: 0, val: s => s.t },
   { key: 'ah',     label: 'Abs. Feuchte', unit: 'g/m³', color: '#22d3ee', dp: 1, val: s => absoluteHumidity(s.t, s.rh) },
   { key: 'wind',   label: 'Wind',         unit: 'km/h', color: '#94a3b8', dp: 0, val: s => s.w },
-  { key: 'csun',   label: 'Sonne (klar)', unit: 'W/m²', color: '#fde047', dp: 0, hourVal: clearSkyAt },
+  { key: 'csun',   label: 'Sonne (klar)', unit: 'W/m²', color: '#fbbf24', dp: 0, hourVal: clearSkyAt },
   { key: 'clouds', label: 'Bewölkung',    unit: '%',    color: '#cbd5e1', dp: 0, val: s => s.c },
 ]
 
 // `deps` = base keys that must all be active for the derived line to appear.
 // Gefühlt needs only temp: humidity is intrinsic to the air (always folded into
 // UTCI from the forecast), while Wind and Sonne are optional exposure factors
-// that refine it when active.
+// that refine it when active. Derived colors are tints of their base metric so
+// related lines read as one family instead of adding new hues.
 const DERIVED = [
-  { key: 'rh',     label: 'rel. Feuchte',   unit: '%',    color: '#38bdf8', dp: 0, deps: ['temp', 'ah'], val: s => s.rh },
+  { key: 'rh',     label: 'rel. Feuchte',   unit: '%',    color: '#67e8f9', dp: 0, deps: ['temp', 'ah'], val: s => s.rh },
   { key: 'effsun', label: 'Sonne effektiv', unit: 'W/m²', color: '#f59e0b', dp: 0, deps: ['csun', 'clouds'], val: s => s.s },
   { key: 'felt',   label: 'Gefühlt',        unit: '°C',   color: '#f472b6', dp: 0, felt: true,
     show: a => a.temp && (a.ah || a.wind || a.csun) },
@@ -430,14 +383,14 @@ function lineWidth(inputs) {
   return Math.min(3, 1.4 + 0.45 * (inputs - 1))
 }
 
-// Multi-day forecast chart. Toggle BASE inputs; DERIVED outputs appear when
-// their inputs are active. Each series is scaled to its own range and overlaid.
-function ForecastChart({ hours, lat, lon }) {
+// Multi-day forecast chart. BASE inputs are toggled from the shared selector
+// above (same `active` state that drives the current-value readout); DERIVED
+// outputs appear when their inputs are active. Same units share one scale.
+function ForecastChart({ hours, lat, lon, active }) {
   const wrapRef = useRef()
   const svgRef = useRef()
   const [w, setW] = useState(360)
   const [selIdx, setSelIdx] = useState(null) // null → defaults to "now"
-  const [active, setActive] = useState({ temp: true, ah: true }) // → shows temp, abs.F, rh, Gefühlt
   useEffect(() => {
     if (!wrapRef.current) return
     const ro = new ResizeObserver(es => setW(es[0].contentRect.width))
@@ -453,7 +406,7 @@ function ForecastChart({ hours, lat, lon }) {
 
   if (!series) return null
 
-  const H = 175, padT = 10, padB = 24, padR = 10
+  const H = 260, padT = 10, padB = 24, padR = 10
   // Labelled axis only when every visible series shares one unit (one scale).
   const units = [...new Set(series.map(s => s.unit))]
   const single = units.length === 1
@@ -522,28 +475,11 @@ function ForecastChart({ hours, lat, lon }) {
     let idx = Math.round((e.clientX - rect.left - 4) / pxPerHour)
     setSelIdx(Math.max(0, Math.min(n - 1, idx)))
   }
-  function toggle(key) {
-    setActive(a => ({ ...a, [key]: !a[key] }))
-  }
 
   return (
     <div className="forecast" ref={wrapRef}>
       <div className="forecast-head">
         <span className="section-name muted">{spanDays}-Tage-Vorschau</span>
-      </div>
-
-      <div className="fc-metrics">
-        {BASES.map(b => (
-          <button
-            key={b.key}
-            type="button"
-            className={`preset-btn ${active[b.key] ? 'active' : ''}`}
-            onClick={() => toggle(b.key)}
-          >
-            <i className="mdot" style={{ background: b.color }} />
-            {b.label}
-          </button>
-        ))}
       </div>
 
       <div className="fc-plot">
@@ -678,26 +614,57 @@ function ensembleInfo(hours) {
   }
 }
 
-function FeltCard({ side, icon, feltTemp, airTemp }) {
-  const cat  = utciCategory(feltTemp)
-  const cls  = colorClass(feltTemp)
-  const diff = feltTemp - airTemp
+// Shared metric selector: BASE inputs to fold into "Gefühlt", also driving
+// the graph below. Borderless row of toggle chips.
+function MetricToggles({ active, onToggle }) {
   return (
-    <div className={`felt-card ${cls}`}>
-      <div className="felt-head">{icon} {side}</div>
-      <div className="ap-val">{fmt1(feltTemp)}{' '}°C</div>
-      <div className="ap-cat">{cat.label}</div>
-      <div className="ap-formula">
-        <span className="ap-diff">{diff >= 0 ? '+' : ''}{fmt1(diff)}°C vs. Luft</span>
+    <div className="fc-metrics">
+      {BASES.map(b => (
+        <button
+          key={b.key}
+          type="button"
+          className={`preset-btn ${active[b.key] ? 'active' : ''}`}
+          onClick={() => onToggle(b.key)}
+        >
+          <i className="mdot" style={{ background: b.color }} />
+          {b.label}
+        </button>
+      ))}
+    </div>
+  )
+}
+
+// The one headline number: UTCI folded from whichever factors are active.
+// Borderless — the color-coded text alone carries the "card" feel.
+function FeltNow({ point, airTemp }) {
+  if (!point) {
+    return (
+      <div className="felt-now">
+        <div className="ap-val">{fmt1(airTemp)}{' '}°C</div>
+        <p className="felt-hint">Lufttemperatur — wähle oben mind. einen weiteren Faktor für „Gefühlt“.</p>
       </div>
+    )
+  }
+  const cat  = utciCategory(point.med)
+  const cls  = colorClass(point.med)
+  const diff = point.med - airTemp
+  return (
+    <div className={`felt-now ${cls}`}>
+      <div className="ap-val">{fmt1(point.med)}{' '}°C</div>
+      <div className="ap-cat">{cat.label}</div>
+      <p className="felt-hint">
+        {fmt1(point.lo)}–{fmt1(point.hi)}°C je nach Modell · {diff >= 0 ? '+' : ''}{fmt1(diff)}°C vs. Luft
+      </p>
     </div>
   )
 }
 
 function FeltTab({
-  outTemp, setOutTemp, outRH, setOutRH, wind, setWind,
-  hours, wxMeta, clouds, geoStatus, lat, lon,
+  outTemp, outRH, wind, hours, wxMeta, clouds, geoStatus, lat, lon,
 }) {
+  const [active, setActive] = useState({ temp: true, ah: true })
+  const toggle = key => setActive(a => ({ ...a, [key]: !a[key] }))
+
   const clearSky  = clearSkyMax(lat, lon)   // full-sun ceiling for now & place
   const TrSun     = meanRadiantTemp(outTemp, clearSky)
   const feltShade = utci(outTemp, outRH, wind, outTemp)
@@ -707,34 +674,19 @@ function FeltTab({
   const ens       = ensembleInfo(hours)
   const grid      = wxMeta?.grid
 
+  const feltDef = DERIVED.find(d => d.felt)
+  const nowIdx  = hours && hours.length ? Math.max(0, hours.findIndex(h => h.ts + 3600000 > Date.now())) : null
+  const nowPoint = (nowIdx != null && feltDef.show(active))
+    ? feltPoints([hours[nowIdx]], { lat, lon }, active)[0]
+    : null
+
   return (
     <>
-      <details className="section-card">
-        <summary className="section-summary">
-          <span className="section-name">
-            Aussen
-            {geoStatus === 'ok' && <span className="live-dot" title="Live-Wetter">●</span>}
-          </span>
-          <span className="summary-chips">
-            <Chip>{outTemp}{' '}°C</Chip>
-            <Chip>{outRH}{' '}%</Chip>
-            <Chip>{wind}{' '}km/h</Chip>
-          </span>
-        </summary>
-        <div className="section-body">
-          <Slider label="Temperatur"       value={outTemp} onChange={setOutTemp} min={-30} max={50}  step={0.5} unit="°C" />
-          <Slider label="Luftfeuchtigkeit" value={outRH}   onChange={setOutRH}   min={0}   max={100} step={1}   unit="%" />
-          <RangeControl
-            label="Wind" badge={`${wind} km/h`} presets={WIND_LEVELS}
-            value={wind} onChange={setWind} min={0} max={120} step={1}
-          />
-        </div>
-      </details>
-
-      <section className="felt-row">
-        <FeltCard side="Schatten" icon="🌳" feltTemp={feltShade} airTemp={outTemp} />
-        <FeltCard side="Sonne"    icon="☀️" feltTemp={feltSun}   airTemp={outTemp} />
-      </section>
+      <div className="felt-top">
+        {geoStatus === 'ok' && <span className="live-dot" title="Live-Wetter">●</span>}
+        <MetricToggles active={active} onToggle={toggle} />
+        <FeltNow point={nowPoint} airTemp={outTemp} />
+      </div>
 
       <details className="section-card">
         <summary className="section-summary">
@@ -747,12 +699,12 @@ function FeltTab({
         </summary>
         <div className="section-body">
           <p className="felt-range-note">
-            Spanne zwischen vollem Schatten und voller Sonne. Wie warm es sich wirklich anfühlt,
-            liegt je nach Bewölkung und Standort dazwischen.
+            Spanne zwischen vollem Schatten und voller Sonne (gleiche Luft, Wind &amp; Feuchte). Wie warm es sich
+            wirklich anfühlt, liegt je nach Bewölkung und Standort dazwischen.
           </p>
           <div className="felt-meta">
             <span>
-              Sonne vs. Schatten +{fmt1(feltSun - feltShade)}°C
+              Schatten {fmt1(feltShade)}°C · Sonne {fmt1(feltSun)}°C (+{fmt1(feltSun - feltShade)}°C)
               <Info>Wie viel wärmer es sich in der vollen Sonne anfühlt als im Schatten (gleiche Luft, Wind &amp; Feuchte).</Info>
             </span>
             <span>
@@ -787,7 +739,7 @@ function FeltTab({
         </div>
       </details>
 
-      <ForecastChart hours={hours} lat={lat} lon={lon} />
+      <ForecastChart hours={hours} lat={lat} lon={lon} active={active} />
 
       <details className="section-card formula-card">
         <summary className="section-summary">
@@ -1100,9 +1052,9 @@ export default function App() {
       <main>
         {tab === 'felt'
           ? <FeltTab
-              outTemp={outTemp} setOutTemp={setOutTemp}
-              outRH={outRH}     setOutRH={setOutRH}
-              wind={wind}       setWind={setWind}
+              outTemp={outTemp}
+              outRH={outRH}
+              wind={wind}
               hours={hours}
               wxMeta={geoStatus === 'ok' ? wxMeta : null}
               clouds={geoStatus === 'ok' ? clouds : null}

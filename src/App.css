@@ -408,13 +408,6 @@ input[type='range'] {
 }
 .vent-note em { color: var(--text); font-style: italic; }
 
-/* ── Preset chip row (wind & sun) ── */
-.preset-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.35rem;
-  margin-bottom: 0.55rem;
-}
 .preset-btn {
   flex: 1 1 auto;
   background: #1e2235;
@@ -434,35 +427,39 @@ input[type='range'] {
   color: var(--text);
 }
 
-/* ── Shade / Sun felt cards ── */
-.felt-row {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 0.6rem;
-  margin-bottom: 0.6rem;
-}
-.felt-card {
-  border-radius: var(--r);
-  padding: 1rem 0.9rem;
-  border: 1px solid transparent;
+/* ── Top: metric selector + single headline "Gefühlt" value, borderless ── */
+.felt-top {
   text-align: center;
+  padding: 0.2rem 0.3rem 0.9rem;
+  margin-bottom: 0.2rem;
 }
-.felt-head {
-  font-size: 0.74rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  opacity: 0.75;
-  margin-bottom: 0.4rem;
-}
-.felt-card .ap-val {
-  font-size: 2.4rem;
+.felt-top .live-dot { display: block; margin-bottom: 0.3rem; }
+.felt-top .fc-metrics { justify-content: center; margin-bottom: 0.9rem; }
+.felt-now .ap-val {
+  font-size: 3.6rem;
   font-weight: 800;
-  letter-spacing: -1.5px;
+  letter-spacing: -2px;
   line-height: 1;
+  font-variant-numeric: tabular-nums;
 }
-.felt-card .ap-cat { font-size: 0.78rem; margin-top: 0.25rem; }
-.felt-card .ap-formula { text-align: center; margin-top: 0.25rem; font-size: 0.7rem; }
+.felt-now .ap-cat {
+  font-size: 0.95rem;
+  font-weight: 700;
+  margin-top: 0.3rem;
+}
+.felt-hint {
+  font-size: 0.78rem;
+  color: var(--muted);
+  margin: 0.4rem 0 0;
+}
+/* Color-code only the text, not a card background — keeps the top borderless. */
+.felt-now.very-hot    .ap-val, .felt-now.very-hot    .ap-cat { color: #fca5a5; }
+.felt-now.hot         .ap-val, .felt-now.hot         .ap-cat { color: #fdba74; }
+.felt-now.warm        .ap-val, .felt-now.warm        .ap-cat { color: #86efac; }
+.felt-now.comfortable .ap-val, .felt-now.comfortable .ap-cat { color: #93c5fd; }
+.felt-now.cool        .ap-val, .felt-now.cool        .ap-cat { color: #a5b4fc; }
+.felt-now.cold        .ap-val, .felt-now.cold        .ap-cat { color: #7dd3fc; }
+.felt-now.very-cold   .ap-val, .felt-now.very-cold   .ap-cat { color: #bae6fd; }
 
 .felt-meta {
   display: flex;
