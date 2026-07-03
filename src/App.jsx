@@ -384,19 +384,35 @@ function buildSeries(hours, ctx, active) {
     ? hours.map(h => stats([def.hourVal(h, ctx)]))
     : hours.map(h => stats(h.samples.map(def.val)))
 
+  // Number of base inputs that combine into "Gefühlt" for the current toggles.
+  const feltInputs = 1 /* temp */ + (active.ah ? 1 : 0) + (active.wind ? 1 : 0) +
+                     (active.csun ? 1 : 0) + (active.csun && active.clouds ? 1 : 0)
+
   const out = []
   for (const b of BASES) {
     if (!active[b.key]) continue
-    const points = pointsFor(b)
-    out.push({ ...b, derived: false, points, ...pointsScale(points) })
+    out.push({ ...b, derived: false, inputs: 1, points: pointsFor(b) })
   }
   for (const d of DERIVED) {
     const visible = d.show ? d.show(active) : d.deps.every(k => active[k])
     if (!visible) continue
     const points = d.felt ? feltPoints(hours, ctx, active) : pointsFor(d)
-    out.push({ ...d, derived: true, points, ...pointsScale(points) })
+    const inputs = d.felt ? feltInputs : d.deps.length
+    out.push({ ...d, derived: true, inputs, points })
+  }
+  // Shared y-scale per unit, so same-unit series (e.g. Lufttemp. & Gefühlt) are
+  // directly comparable — one axis, not independently auto-ranged.
+  for (const unit of new Set(out.map(s => s.unit))) {
+    const scale = pointsScale(out.filter(s => s.unit === unit).flatMap(s => s.points))
+    for (const s of out) if (s.unit === unit) Object.assign(s, scale)
   }
   return out
+}
+
+// Line width scales with how many base inputs combine into the value, capped so
+// the busiest "Gefühlt" stays legible rather than a slab.
+function lineWidth(inputs) {
+  return Math.min(3, 1.4 + 0.45 * (inputs - 1))
 }
 
 // Multi-day forecast chart. Toggle BASE inputs; DERIVED outputs appear when
@@ -423,8 +439,10 @@ function ForecastChart({ hours, lat, lon }) {
   if (!series) return null
 
   const H = 175, padT = 10, padB = 24, padR = 10
-  const single = series.length === 1
-  const axisW = single ? 30 : 6
+  // Labelled axis only when every visible series shares one unit (one scale).
+  const units = [...new Set(series.map(s => s.unit))]
+  const single = units.length === 1
+  const axisW = single ? 34 : 6
   const innerH = H - padT - padB
   const n = hours.length
 
@@ -454,8 +472,8 @@ function ForecastChart({ hours, lat, lon }) {
     return `${up}${dn}Z`
   }
 
-  // Horizontal gridlines: labelled ticks when a single metric is shown,
-  // else evenly-spaced unlabelled references (units would differ).
+  // Horizontal gridlines: labelled ticks when all series share one unit (one
+  // scale), else evenly-spaced unlabelled references (units would differ).
   const grid = []
   if (single) {
     const s = series[0], yf = ymap(s)
@@ -548,7 +566,7 @@ function ForecastChart({ hours, lat, lon }) {
             ))}
             {series.map(s => (
               <path key={`l${s.key}`} d={linePath(s.points, ymap(s))} fill="none" stroke={s.color}
-                strokeWidth={s.derived ? 2 : 1.8} strokeDasharray={s.derived ? '' : '4 2.5'} />
+                strokeWidth={lineWidth(s.inputs)} strokeDasharray={s.derived ? '' : '4 2.5'} />
             ))}
 
             <line x1={x(nowIdx)} x2={x(nowIdx)} y1={padT} y2={padT + innerH} className="fc-now" />
@@ -594,7 +612,7 @@ function ForecastChart({ hours, lat, lon }) {
 
       <p className="forecast-note">
         Basiswerte (gestrichelt) an/aus – abgeleitete Größen (durchgezogen: rel. Feuchte, effektive Sonne, Gefühlt) erscheinen automatisch.
-        {' '}„Gefühlt“ erscheint ab Lufttemp. + einem Faktor (Feuchte, Wind oder Sonne) und bezieht nur die aktiven Faktoren ein (ohne Feuchte-Wahl: neutrale 50 %). Tippen wählt einen Zeitpunkt; Schattierung = Modell-Spanne.
+        {' '}„Gefühlt“ erscheint ab Lufttemp. + einem Faktor (Feuchte, Wind oder Sonne) und bezieht nur die aktiven Faktoren ein (ohne Feuchte-Wahl: neutrale 50 %). Die Linienstärke wächst mit der Zahl einfliessender Grössen. Gleiche Einheiten teilen sich eine Skala (direkt vergleichbar). Tippen wählt einen Zeitpunkt; Schattierung = Modell-Spanne.
       </p>
     </div>
   )
