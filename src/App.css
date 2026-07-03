@@ -170,12 +170,6 @@ h1 {
   flex-shrink: 0;
 }
 
-.live-dot {
-  font-size: 0.5rem;
-  color: #86efac;
-  line-height: 1;
-}
-
 .summary-chips {
   display: flex;
   gap: 0.35rem;
@@ -409,7 +403,7 @@ input[type='range'] {
 .vent-note em { color: var(--text); font-style: italic; }
 
 .preset-btn {
-  flex: 1 1 auto;
+  flex: 0 1 auto;
   background: #1e2235;
   border: 1px solid var(--border);
   border-radius: 999px;
@@ -430,67 +424,29 @@ input[type='range'] {
 /* ── Top: metric selector + single headline "Gefühlt" value, borderless ── */
 .felt-top {
   text-align: center;
-  padding: 0.2rem 0.3rem 0.9rem;
+  padding: 0.2rem 0.3rem 1rem;
   margin-bottom: 0.2rem;
 }
-.felt-top .live-dot { display: block; margin-bottom: 0.3rem; }
-.felt-top .fc-metrics { justify-content: center; margin-bottom: 0.9rem; }
+.felt-top .fc-metrics { justify-content: center; margin-bottom: 1.1rem; }
 .felt-now .ap-val {
   font-size: 3.6rem;
   font-weight: 800;
   letter-spacing: -2px;
   line-height: 1;
   font-variant-numeric: tabular-nums;
+  color: var(--felt-color, var(--text));
 }
 .felt-now .ap-cat {
   font-size: 0.95rem;
   font-weight: 700;
-  margin-top: 0.3rem;
+  margin-top: 0.35rem;
+  color: var(--felt-color, var(--text));
 }
 .felt-hint {
   font-size: 0.78rem;
   color: var(--muted);
-  margin: 0.4rem 0 0;
-}
-/* Color-code only the text, not a card background — keeps the top borderless. */
-.felt-now.very-hot    .ap-val, .felt-now.very-hot    .ap-cat { color: #fca5a5; }
-.felt-now.hot         .ap-val, .felt-now.hot         .ap-cat { color: #fdba74; }
-.felt-now.warm        .ap-val, .felt-now.warm        .ap-cat { color: #86efac; }
-.felt-now.comfortable .ap-val, .felt-now.comfortable .ap-cat { color: #93c5fd; }
-.felt-now.cool        .ap-val, .felt-now.cool        .ap-cat { color: #a5b4fc; }
-.felt-now.cold        .ap-val, .felt-now.cold        .ap-cat { color: #7dd3fc; }
-.felt-now.very-cold   .ap-val, .felt-now.very-cold   .ap-cat { color: #bae6fd; }
-
-.felt-meta {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 0.3rem 1rem;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--r);
-  padding: 0.7rem 0.9rem;
-  margin-bottom: 0.6rem;
-  font-size: 0.78rem;
-  color: var(--muted);
-}
-.felt-meta span { display: inline-flex; align-items: center; }
-
-.felt-range-note {
-  font-size: 0.74rem;
+  margin: 0.5rem 0 0;
   line-height: 1.5;
-  color: var(--muted);
-  margin: 0.6rem 0 0.7rem;
-}
-
-/* Details collapsible: physical data sits flush inside the body */
-.section-body .felt-meta {
-  background: none;
-  border: none;
-  border-radius: 0;
-  padding: 0;
-  margin: 0;
-  justify-content: flex-start;
 }
 
 /* ── Forecast chart ── */
@@ -592,25 +548,11 @@ input[type='range'] {
 .fc-rval:not(.derived) { opacity: 0.78; font-weight: 600; } /* base inputs, dimmer than results */
 .fc-rmodels { margin-left: auto; font-size: 0.7rem; color: var(--muted); }
 .fc-band { stroke: none; }
-.fc-band.sun   { fill: #fbbf24; opacity: 0.16; }
-.fc-band.shade { fill: #7dd3fc; opacity: 0.14; }
-.fc-line { fill: none; stroke-width: 1.8; }
-.fc-line.sun   { stroke: #fbbf24; }
-.fc-line.shade { stroke: #7dd3fc; }
 .forecast-note {
   font-size: 0.66rem;
   color: var(--muted);
   margin-top: 0.4rem;
 }
-
-/* temp colour themes */
-.very-hot    { background: #4a0a0a; color: #fca5a5; border-color: #7f1d1d; }
-.hot         { background: #431407; color: #fdba74; border-color: #7c2d12; }
-.warm        { background: #14532d; color: #86efac; border-color: #166534; }
-.comfortable { background: #0f2e4a; color: #93c5fd; border-color: #1e4068; }
-.cool        { background: #1e1b4b; color: #a5b4fc; border-color: #312e81; }
-.cold        { background: #0c1a3a; color: #7dd3fc; border-color: #1e3a5f; }
-.very-cold   { background: #071926; color: #bae6fd; border-color: #0c4a6e; }
 
 /* ── Ventilation table ── */
 .vent-table { padding-top: 0.5rem; }

@@ -46,6 +46,12 @@ function colorClass(t) {
   return 'very-cold'
 }
 
+// Text-only temperature colour (no card background) for the headline value.
+const TEMP_COLOR = {
+  'very-hot': '#fca5a5', hot: '#fdba74', warm: '#86efac', comfortable: '#93c5fd',
+  cool: '#a5b4fc', cold: '#7dd3fc', 'very-cold': '#bae6fd',
+}
+
 function ventVerdict(Tin, RHin, Tout, RHout) {
   const a = ventilationAssessment(Tin, RHin, Tout, RHout)
   const dry  = a.deltaAH < -0.3
@@ -635,8 +641,10 @@ function MetricToggles({ active, onToggle }) {
 }
 
 // The one headline number: UTCI folded from whichever factors are active.
-// Borderless — the color-coded text alone carries the "card" feel.
-function FeltNow({ point, airTemp }) {
+// Borderless — color-coded text only, no card background.
+function FeltNow({ point, airTemp, dp }) {
+  const schwuel = dp >= 18 ? 'stark' : dp >= 16 ? 'spürbar' : null
+
   if (!point) {
     return (
       <div className="felt-now">
@@ -646,98 +654,40 @@ function FeltNow({ point, airTemp }) {
     )
   }
   const cat  = utciCategory(point.med)
-  const cls  = colorClass(point.med)
+  const color = TEMP_COLOR[colorClass(point.med)]
   const diff = point.med - airTemp
   return (
-    <div className={`felt-now ${cls}`}>
+    <div className="felt-now" style={{ '--felt-color': color }}>
       <div className="ap-val">{fmt1(point.med)}{' '}°C</div>
       <div className="ap-cat">{cat.label}</div>
       <p className="felt-hint">
         {fmt1(point.lo)}–{fmt1(point.hi)}°C je nach Modell · {diff >= 0 ? '+' : ''}{fmt1(diff)}°C vs. Luft
+        {schwuel && <> · Schwüle {schwuel} (Tp {fmt1(dp)}°C)</>}
       </p>
     </div>
   )
 }
 
-function FeltTab({
-  outTemp, outRH, wind, hours, wxMeta, clouds, geoStatus, lat, lon,
-}) {
+function FeltTab({ outTemp, outRH, hours, wxMeta, lat, lon }) {
   const [active, setActive] = useState({ temp: true, ah: true })
   const toggle = key => setActive(a => ({ ...a, [key]: !a[key] }))
 
-  const clearSky  = clearSkyMax(lat, lon)   // full-sun ceiling for now & place
-  const TrSun     = meanRadiantTemp(outTemp, clearSky)
-  const feltShade = utci(outTemp, outRH, wind, outTemp)
-  const feltSun   = utci(outTemp, outRH, wind, TrSun)
-  const dp        = dewPoint(outTemp, outRH)
-  const ah        = absoluteHumidity(outTemp, outRH)
-  const ens       = ensembleInfo(hours)
-  const grid      = wxMeta?.grid
+  const dp   = dewPoint(outTemp, outRH)
+  const grid = wxMeta?.grid
 
   const feltDef = DERIVED.find(d => d.felt)
   const nowIdx  = hours && hours.length ? Math.max(0, hours.findIndex(h => h.ts + 3600000 > Date.now())) : null
   const nowPoint = (nowIdx != null && feltDef.show(active))
     ? feltPoints([hours[nowIdx]], { lat, lon }, active)[0]
     : null
+  const ens = ensembleInfo(hours)
 
   return (
     <>
       <div className="felt-top">
-        {geoStatus === 'ok' && <span className="live-dot" title="Live-Wetter">●</span>}
         <MetricToggles active={active} onToggle={toggle} />
-        <FeltNow point={nowPoint} airTemp={outTemp} />
+        <FeltNow point={nowPoint} airTemp={outTemp} dp={dp} />
       </div>
-
-      <details className="section-card">
-        <summary className="section-summary">
-          <span className="section-name">Details</span>
-          <span className="summary-chips">
-            <Chip>Tp {fmt1(dp)}°C</Chip>
-            <Chip>☀️ +{fmt1(feltSun - feltShade)}°</Chip>
-            {wxMeta && wxMeta.sources > 1 && <Chip>{wxMeta.sources} Mod.</Chip>}
-          </span>
-        </summary>
-        <div className="section-body">
-          <p className="felt-range-note">
-            Spanne zwischen vollem Schatten und voller Sonne (gleiche Luft, Wind &amp; Feuchte). Wie warm es sich
-            wirklich anfühlt, liegt je nach Bewölkung und Standort dazwischen.
-          </p>
-          <div className="felt-meta">
-            <span>
-              Schatten {fmt1(feltShade)}°C · Sonne {fmt1(feltSun)}°C (+{fmt1(feltSun - feltShade)}°C)
-              <Info>Wie viel wärmer es sich in der vollen Sonne anfühlt als im Schatten (gleiche Luft, Wind &amp; Feuchte).</Info>
-            </span>
-            <span>
-              Strahlungstemp. Sonne {fmt1(TrSun)}°C
-              <Info>Mittlere Strahlungstemperatur bei klarem Himmel (Sonnenstand jetzt). Im Schatten ≈ Lufttemperatur.</Info>
-            </span>
-            <span>
-              Taupunkt {fmt1(dp)}°C · {fmt1(ah)} g/m³
-              <Info>Taupunkt und absolute Feuchte der Aussenluft.</Info>
-            </span>
-            <span>
-              Enthalpie {fmt1(specificEnthalpy(outTemp, outRH))} kJ/kg
-              <Info>Spezifische Enthalpie der Feuchtluft (fühlbare + latente Wärme pro kg trockene Luft).</Info>
-            </span>
-            {clouds != null && (
-              <span>
-                Bewölkung {clouds}%
-                <Info>Aktuelle Bewölkung (Konsens der Wettermodelle). Dämpft die Sonneneinstrahlung und damit die gefühlte Temperatur in der Sonne.</Info>
-              </span>
-            )}
-            <span>
-              Schwüle {dp >= 18 ? 'stark' : dp >= 16 ? 'spürbar' : 'gering'}
-              <Info>Schwüle-Empfinden nach Taupunkt: ab ~16°C spürbar, ab ~18°C stark – dann kühlt Schwitzen kaum noch.</Info>
-            </span>
-            {wxMeta && wxMeta.sources > 1 && (
-              <span>
-                {wxMeta.sources} Modelle · ±{fmt1(wxMeta.spread.temp / 2)}°C
-                <Info>Konsens aus {wxMeta.sources} Wettermodellen (Median je Größe). Die Spanne zeigt die Unsicherheit – je grösser, desto unsicherer die Vorhersage.</Info>
-              </span>
-            )}
-          </div>
-        </div>
-      </details>
 
       <ForecastChart hours={hours} lat={lat} lon={lon} active={active} />
 
@@ -1054,11 +1004,8 @@ export default function App() {
           ? <FeltTab
               outTemp={outTemp}
               outRH={outRH}
-              wind={wind}
               hours={hours}
               wxMeta={geoStatus === 'ok' ? wxMeta : null}
-              clouds={geoStatus === 'ok' ? clouds : null}
-              geoStatus={geoStatus}
               lat={geoLocation?.lat ?? 50}
               lon={geoLocation?.lon ?? 10}
             />
