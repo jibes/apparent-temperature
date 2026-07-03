@@ -555,16 +555,25 @@ function ForecastChart({ hours, lat, lon, active }) {
       </div>
 
       <div className="fc-readout">
-        <span className="fc-rtime">{dateStr} {hhmm}</span>
-        {series.map(s => {
-          const p = s.points[si]; if (!p) return null
-          const f = v => (s.dp ? v.toFixed(s.dp) : String(Math.round(v)))
-          return (
-            <span key={s.key} className={`fc-rval ${s.derived ? 'derived' : ''}`} style={{ color: s.color }}>
-              {s.derived ? '→ ' : ''}{s.label} {f(p.med)} {s.unit} <em>{f(p.lo)}–{f(p.hi)}</em>
-            </span>
-          )
-        })}
+        <div className="fc-rtime">{dateStr} {hhmm}</div>
+        <div className="fc-rgrid">
+          {series.map(s => {
+            const p = s.points[si]; if (!p) return null
+            const f = v => (s.dp ? v.toFixed(s.dp) : String(Math.round(v)))
+            return (
+              <div key={s.key} className={`fc-rcell ${s.derived ? 'derived' : ''}`}>
+                <span className="fc-rlabel">
+                  <i className="mdot" style={{ background: s.color }} />
+                  {s.derived && '→ '}{s.label}
+                </span>
+                <span className="fc-rline">
+                  <span className="fc-rvalue">{f(p.med)}{' '}{s.unit}</span>
+                  <span className="fc-rrange">{f(p.lo)}–{f(p.hi)}</span>
+                </span>
+              </div>
+            )
+          })}
+        </div>
       </div>
 
       <p className="forecast-note">

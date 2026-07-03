@@ -526,27 +526,52 @@ input[type='range'] {
 .fc-dot.sun   { fill: #fbbf24; }
 .fc-dot.shade { fill: #7dd3fc; }
 
-/* selected-time readout */
+/* selected-time readout: a small stat-tile grid, 2 per row */
 .fc-readout {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.3rem 0.6rem;
-  padding: 0.45rem 0.55rem;
+  padding: 0.55rem 0.65rem 0.6rem;
   margin: 0.5rem 0 0.4rem;      /* sits below the graph now */
-  min-height: 2.4rem;           /* reserve ~2 lines so it grows quietly */
+  min-height: 2.4rem;           /* reserve space so the box grows quietly */
   background: #1e2235;
   border: 1px solid var(--border);
   border-radius: var(--rs);
   font-size: 0.8rem;
 }
-.fc-rtime { font-weight: 700; font-variant-numeric: tabular-nums; }
-.fc-rval { font-weight: 700; font-variant-numeric: tabular-nums; }
-.fc-rval.sun   { color: #fbbf24; }
-.fc-rval.shade { color: #7dd3fc; }
-.fc-rval em { font-style: normal; font-weight: 600; opacity: 0.7; font-size: 0.86em; }
-.fc-rval:not(.derived) { opacity: 0.78; font-weight: 600; } /* base inputs, dimmer than results */
-.fc-rmodels { margin-left: auto; font-size: 0.7rem; color: var(--muted); }
+.fc-rtime {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  margin-bottom: 0.5rem;
+}
+.fc-rgrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem 0.7rem;
+}
+.fc-rcell {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+}
+.fc-rlabel {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.68rem;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.fc-rcell.derived .fc-rlabel { color: var(--text); opacity: 0.85; }
+.fc-rline {
+  display: flex;
+  align-items: baseline;
+  gap: 0.4rem;
+  white-space: nowrap;
+}
+.fc-rvalue { font-weight: 700; font-variant-numeric: tabular-nums; }
+.fc-rrange { font-size: 0.72rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+.fc-rcell:not(.derived) .fc-rvalue { font-weight: 600; opacity: 0.85; } /* base inputs, dimmer than results */
 .fc-band { stroke: none; }
 .forecast-note {
   font-size: 0.66rem;
