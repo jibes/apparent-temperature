@@ -346,11 +346,16 @@ function niceStep(range) {
   return (n < 1.5 ? 1 : n < 3 ? 2 : n < 7 ? 5 : 10) * pow
 }
 
-// A metric's own y-scale from its per-hour points (each {med,lo,hi} or null).
-function pointsScale(points) {
+// Shared y-scale for one unit's points (each {med,lo,hi} or null). Non-negative
+// quantities anchor the baseline at 0 and % is fixed 0–100, so adding a
+// same-unit series (e.g. effektive Sonne alongside klare Sonne) doesn't
+// re-range the others — only °C floats freely (can be negative, no natural 0).
+function pointsScale(points, unit) {
+  if (unit === '%') return { yMin: 0, yMax: 100, step: 20 }
   let yMin = Infinity, yMax = -Infinity
   for (const p of points) { if (!p) continue; yMin = Math.min(yMin, p.lo); yMax = Math.max(yMax, p.hi) }
   if (!Number.isFinite(yMin) || !Number.isFinite(yMax)) { yMin = 0; yMax = 1 } // no data → avoid Inf/NaN
+  if (unit !== '°C') yMin = Math.min(0, yMin) // irradiance/humidity/wind start at 0
   const step = niceStep(yMax - yMin)
   yMin = Math.floor(yMin / step) * step
   yMax = Math.ceil(yMax / step) * step
@@ -378,6 +383,8 @@ function feltPoints(hours, ctx, active) {
   })
 }
 
+const ALL_ON = { temp: true, ah: true, wind: true, csun: true, clouds: true }
+
 // Build the flat list of scaled series to draw from the active base set.
 function buildSeries(hours, ctx, active) {
   const pointsFor = def => def.hourVal
@@ -400,10 +407,18 @@ function buildSeries(hours, ctx, active) {
     const inputs = d.felt ? feltInputs : d.deps.length
     out.push({ ...d, derived: true, inputs, points })
   }
-  // Shared y-scale per unit, so same-unit series (e.g. Lufttemp. & Gefühlt) are
-  // directly comparable — one axis, not independently auto-ranged.
+  // Shared y-scale per unit, fixed as if every metric of that unit were shown —
+  // so toggling a metric on/off never re-ranges (and thus visually shifts) any
+  // other line sharing its unit.
   for (const unit of new Set(out.map(s => s.unit))) {
-    const scale = pointsScale(out.filter(s => s.unit === unit).flatMap(s => s.points))
+    const allDefsForUnit = [
+      ...BASES.filter(b => b.unit === unit),
+      ...DERIVED.filter(d => d.unit === unit),
+    ]
+    const allPoints = allDefsForUnit.flatMap(def =>
+      def.felt ? feltPoints(hours, ctx, ALL_ON) : pointsFor(def)
+    )
+    const scale = pointsScale(allPoints, unit)
     for (const s of out) if (s.unit === unit) Object.assign(s, scale)
   }
   return out
