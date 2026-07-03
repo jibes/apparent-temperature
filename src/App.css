@@ -421,13 +421,12 @@ input[type='range'] {
   color: var(--text);
 }
 
-/* ── Top: metric selector + single headline "Gefühlt" value, borderless ── */
+/* ── Top: single headline "Gefühlt" value, borderless ── */
 .felt-top {
   text-align: center;
   padding: 0.2rem 0.3rem 1rem;
   margin-bottom: 0.2rem;
 }
-.felt-top .fc-metrics { justify-content: center; margin-bottom: 1.1rem; }
 .felt-now .ap-val {
   font-size: 3.6rem;
   font-weight: 800;
@@ -483,8 +482,9 @@ input[type='range'] {
 .fc-metrics {
   display: flex;
   flex-wrap: wrap;
+  justify-content: center;
   gap: 0.3rem;
-  margin-bottom: 0.55rem;
+  margin-bottom: 0.8rem;
 }
 .mdot {
   display: inline-block;

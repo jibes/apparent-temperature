@@ -669,7 +669,7 @@ function FeltNow({ point, airTemp, dp }) {
 }
 
 function FeltTab({ outTemp, outRH, hours, wxMeta, lat, lon }) {
-  const [active, setActive] = useState({ temp: true, ah: true })
+  const [active, setActive] = useState({ temp: true, ah: true, wind: true, csun: true, clouds: true })
   const toggle = key => setActive(a => ({ ...a, [key]: !a[key] }))
 
   const dp   = dewPoint(outTemp, outRH)
@@ -685,9 +685,10 @@ function FeltTab({ outTemp, outRH, hours, wxMeta, lat, lon }) {
   return (
     <>
       <div className="felt-top">
-        <MetricToggles active={active} onToggle={toggle} />
         <FeltNow point={nowPoint} airTemp={outTemp} dp={dp} />
       </div>
+
+      <MetricToggles active={active} onToggle={toggle} />
 
       <ForecastChart hours={hours} lat={lat} lon={lon} active={active} />
 
