@@ -552,11 +552,18 @@ function ForecastChart({ hours, lat, lon, active, selTs, setSelTs, visible }) {
     return interpPoint(s.points[nowIdx], s.points[nowIdx + 1], nowFrac)
   }
 
+  // Snap to whichever is closer: the nearest whole hour, or "now" (its own
+  // snap point, not aligned to the hourly grid) — so returning to live mode
+  // is just tapping near the Jetzt line, the same gesture as picking any
+  // other point, rather than a separate hidden control.
   function pick(e) {
     const rect = svgRef.current.getBoundingClientRect()
-    let idx = Math.round((e.clientX - rect.left - 4) / pxPerHour)
+    const px = e.clientX - rect.left
+    let idx = Math.round((px - 4) / pxPerHour)
     idx = Math.max(0, Math.min(n - 1, idx))
-    setSelTs(hours[idx].ts)
+    const hourDist = Math.abs(px - x(idx))
+    const nowDist  = Math.abs(px - xNow)
+    setSelTs(nowDist < hourDist ? null : hours[idx].ts)
   }
 
   return (
@@ -607,17 +614,8 @@ function ForecastChart({ hours, lat, lon, active, selTs, setSelTs, visible }) {
                 strokeWidth={lineWidth(s.inputs)} strokeDasharray={s.derived ? '' : '4 2.5'} />
             ))}
 
-            {/* Tapping anywhere pins the selection to that hour (and it stays
-                pinned indefinitely, since the selection now survives tab
-                switches) — so "Jetzt" doubles as the way back to live mode. */}
-            <g
-              className="fc-now-hit"
-              onPointerDown={e => { e.stopPropagation(); setSelTs(null) }}
-            >
-              <rect x={xNow - 14} y={padT} width={28} height={innerH} fill="transparent" />
-              <line x1={xNow} x2={xNow} y1={padT} y2={padT + innerH} className="fc-now" />
-              <text x={xNow + 3} y={padT + 9} className="fc-nowlab">Jetzt</text>
-            </g>
+            <line x1={xNow} x2={xNow} y1={padT} y2={padT + innerH} className="fc-now" />
+            <text x={xNow + 3} y={padT + 9} className="fc-nowlab">Jetzt</text>
 
             {!selectingNow && (
               <line x1={selX} x2={selX} y1={padT} y2={padT + innerH} className="fc-cursor" />
