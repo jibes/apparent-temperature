@@ -300,29 +300,7 @@ input[type='range'] {
   pointer-events: none;
 }
 
-/* ── Felt temp cards ── */
-.ap-row {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 0.6rem;
-  margin-bottom: 0.6rem;
-}
-
-.ap-card {
-  border-radius: var(--r);
-  padding: 0.9rem 0.85rem;
-  border: 1px solid transparent;
-}
-
-.ap-side {
-  font-size: 0.68rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.09em;
-  opacity: 0.6;
-  margin-bottom: 0.2rem;
-}
-
+/* ── Felt-now headline value (base; sizing overridden by .felt-now) ── */
 .ap-val {
   font-size: 2.2rem;
   font-weight: 800;
@@ -330,54 +308,10 @@ input[type='range'] {
   line-height: 1;
   font-variant-numeric: tabular-nums;
 }
-
-.ap-formula {
-  font-size: 0.72rem;
-  margin-top: 0.35rem;
-  opacity: 0.7;
-}
-
-.ap-diff { opacity: 0.65; }
-
-.ap-meta {
-  display: flex;
-  flex-direction: column;
-  gap: 0.15rem;
-  margin-top: 0.5rem;
-  font-size: 0.75rem;
-  opacity: 0.75;
-}
-
-/* ── Full-width felt card ── */
-.ap-card-full {
-  border-radius: var(--r);
-  padding: 1.3rem 1.2rem;
-  border: 1px solid transparent;
-  margin-bottom: 0.6rem;
-  text-align: center;
-}
-.ap-card-full .ap-side {
-  justify-content: center;
-  display: flex;
-  align-items: center;
-}
-.ap-val-lg {
-  font-size: 3.4rem;
-  font-weight: 800;
-  letter-spacing: -2px;
-  line-height: 1;
-  font-variant-numeric: tabular-nums;
-  margin: 0.25rem 0 0.1rem;
-}
 .ap-cat {
   font-size: 0.95rem;
   font-weight: 700;
   margin-bottom: 0.4rem;
-}
-.ap-card-full .ap-formula { text-align: center; }
-.ap-card-full .ap-meta {
-  align-items: center;
-  margin-top: 0.7rem;
 }
 
 /* ── Ventilation result block ── */
@@ -520,12 +454,10 @@ input[type='range'] {
 .fc-xlab { font-weight: 700; fill: var(--text); }
 .fc-hourlab { font-size: 8px; opacity: 0.8; }
 .fc-past { fill: #000; opacity: 0.28; }
+.fc-now-hit { cursor: pointer; }
 .fc-now { stroke: #86efac; stroke-width: 1.4; opacity: 0.85; }
 .fc-nowlab { fill: #86efac; font-size: 8.5px; font-weight: 700; }
 .fc-cursor { stroke: var(--text); stroke-width: 1; opacity: 0.55; }
-.fc-dot { stroke: var(--bg); stroke-width: 1.5; }
-.fc-dot.sun   { fill: #fbbf24; }
-.fc-dot.shade { fill: #7dd3fc; }
 
 /* selected-time readout: a small stat-tile grid, 2 per row */
 .fc-readout {

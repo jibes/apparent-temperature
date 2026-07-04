@@ -607,8 +607,17 @@ function ForecastChart({ hours, lat, lon, active, selTs, setSelTs, visible }) {
                 strokeWidth={lineWidth(s.inputs)} strokeDasharray={s.derived ? '' : '4 2.5'} />
             ))}
 
-            <line x1={xNow} x2={xNow} y1={padT} y2={padT + innerH} className="fc-now" />
-            <text x={xNow + 3} y={padT + 9} className="fc-nowlab">Jetzt</text>
+            {/* Tapping anywhere pins the selection to that hour (and it stays
+                pinned indefinitely, since the selection now survives tab
+                switches) — so "Jetzt" doubles as the way back to live mode. */}
+            <g
+              className="fc-now-hit"
+              onPointerDown={e => { e.stopPropagation(); setSelTs(null) }}
+            >
+              <rect x={xNow - 14} y={padT} width={28} height={innerH} fill="transparent" />
+              <line x1={xNow} x2={xNow} y1={padT} y2={padT + innerH} className="fc-now" />
+              <text x={xNow + 3} y={padT + 9} className="fc-nowlab">Jetzt</text>
+            </g>
 
             {!selectingNow && (
               <line x1={selX} x2={selX} y1={padT} y2={padT + innerH} className="fc-cursor" />
