@@ -7,12 +7,19 @@ const BASE = 'https://api.open-meteo.com/v1/forecast'
 // Ensemble members. Display metadata (name, native grid resolution) is shown in
 // the app's methodology section; resolutions are approximate because "seamless"
 // blends a fine regional model near its home region with a coarser global one.
+// resKm is the finest (lower-bound) grid spacing, used to find whichever
+// active member currently gives the sharpest local detail. MeteoSwiss's
+// ICON-CH1/CH2 are regional (Central Europe only, short lead time: CH1 33h,
+// CH2 5d) — they contribute only near the Alps and only early in the
+// forecast, then drop out like any other model whose horizon ends.
 export const MODEL_INFO = {
-  icon_seamless:        { name: 'DWD ICON',     org: 'Deutscher Wetterdienst', res: '2–11 km' },
-  gfs_seamless:         { name: 'NOAA GFS',     org: 'USA',                    res: '3–25 km' },
-  ecmwf_ifs025:         { name: 'ECMWF IFS',    org: 'Europa',                 res: '25 km' },
-  gem_seamless:         { name: 'GEM',          org: 'Kanada',                 res: '2.5–15 km' },
-  meteofrance_seamless: { name: 'Météo-France', org: 'Frankreich',             res: '1.5–25 km' },
+  icon_seamless:        { name: 'DWD ICON',           org: 'Deutscher Wetterdienst', res: '2–11 km',   resKm: 2 },
+  gfs_seamless:         { name: 'NOAA GFS',           org: 'USA',                    res: '3–25 km',   resKm: 3 },
+  ecmwf_ifs025:         { name: 'ECMWF IFS',          org: 'Europa',                 res: '25 km',     resKm: 25 },
+  gem_seamless:         { name: 'GEM',                org: 'Kanada',                 res: '2.5–15 km', resKm: 2.5 },
+  meteofrance_seamless: { name: 'Météo-France',       org: 'Frankreich',             res: '1.5–25 km', resKm: 1.5 },
+  meteoswiss_icon_ch1:  { name: 'MeteoSwiss ICON-CH1', org: 'MeteoSchweiz',          res: '1 km',      resKm: 1 },
+  meteoswiss_icon_ch2:  { name: 'MeteoSwiss ICON-CH2', org: 'MeteoSchweiz',          res: '2 km',      resKm: 2 },
 }
 const MODELS = Object.keys(MODEL_INFO)
 
@@ -185,4 +192,16 @@ export async function searchLocation(query) {
     a.city ?? a.town ?? a.village ?? a.county ?? a.state ??
     hit.display_name?.split(',')[0] ?? query
   return { lat: parseFloat(hit.lat), lon: parseFloat(hit.lon), name }
+}
+
+// Reverse geocoding via Nominatim. Returns a short place name for a
+// coordinate (e.g. the grid cell a model's data actually describes), or null
+// if nothing resolves (open ocean, no address data, etc.).
+export async function reverseGeocode(lat, lon) {
+  const url = `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json`
+  const res = await fetch(url, { headers: { 'Accept-Language': 'de' } })
+  if (!res.ok) throw new Error(`Nominatim ${res.status}`)
+  const g = await res.json()
+  const a = g.address ?? {}
+  return a.city ?? a.town ?? a.village ?? a.county ?? null
 }

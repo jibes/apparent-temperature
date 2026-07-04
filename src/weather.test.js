@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { fetchCurrentWeather, fetchHourlyForecast, searchLocation, toEpoch } from './weather.js'
+import { fetchCurrentWeather, fetchHourlyForecast, searchLocation, reverseGeocode, toEpoch } from './weather.js'
 
 describe('toEpoch (timezone handling)', () => {
   it('interprets a zone-less local string with the location offset', () => {
@@ -243,5 +243,19 @@ describe('searchLocation', () => {
   it('returns null when nothing is found', async () => {
     mockFetch([])
     expect(await searchLocation('asdfqwer')).toBeNull()
+  })
+})
+
+describe('reverseGeocode', () => {
+  it('returns a place name for a coordinate', async () => {
+    mockFetch({ address: { city: 'Zürich' } })
+    expect(await reverseGeocode(47.37, 8.54)).toBe('Zürich')
+  })
+
+  it('falls back through town/village/county, else null', async () => {
+    mockFetch({ address: { village: 'Wattwil' } })
+    expect(await reverseGeocode(47.3, 9.1)).toBe('Wattwil')
+    mockFetch({ address: {} })
+    expect(await reverseGeocode(47.3, 9.1)).toBeNull()
   })
 })

@@ -5,7 +5,7 @@ import {
   dewPoint,
   absoluteHumidity, specificEnthalpy,
 } from './formulas.js'
-import { fetchCurrentWeather, fetchHourlyForecast, searchLocation, MODEL_INFO } from './weather.js'
+import { fetchCurrentWeather, fetchHourlyForecast, searchLocation, reverseGeocode, MODEL_INFO } from './weather.js'
 import './App.css'
 
 // helpers
@@ -712,8 +712,19 @@ function ensembleInfo(hours) {
   }).filter(Boolean)
 
   const count = f => nowSamples.filter(f).length
+
+  // Whichever active member currently gives the sharpest local detail (the
+  // smallest grid cell) — e.g. MeteoSwiss ICON-CH1 (1 km) near the Alps
+  // while it's within its 33 h horizon, falling back to a coarser member
+  // once it drops out.
+  const nowKeys = new Set(nowSamples.map(s => s.m))
+  const finest = members
+    .filter(m => nowKeys.has(m.key))
+    .reduce((best, m) => (!best || m.resKm < best.resKm) ? m : best, null)
+
   return {
     members,
+    finest,
     now: {
       base:  nowSamples.length,
       rad:   count(s => s.s != null),
@@ -770,7 +781,7 @@ function FeltNow({ point, airTemp, dp }) {
   )
 }
 
-function FeltTab({ outTemp, outRH, hours, wxMeta, lat, lon, selTs, setSelTs, visible }) {
+function FeltTab({ outTemp, outRH, hours, wxMeta, gridPlace, lat, lon, selTs, setSelTs, visible }) {
   const [active, setActive] = useState({ temp: true, ah: true, wind: true, csun: true, clouds: true })
   const toggle = key => setActive(a => ({ ...a, [key]: !a[key] }))
 
@@ -819,6 +830,11 @@ function FeltTab({ outTemp, outRH, hours, wxMeta, lat, lon, selTs, setSelTs, vis
 
           {ens && (
             <>
+              {ens.finest && (
+                <p><strong>Feinste Auflösung hier</strong> – {ens.finest.name} (~{ens.finest.resKm} km)
+                  {gridPlace && <> bei <strong>{gridPlace}</strong></>}. Wechselt mit dem Ort und kann im
+                  Verlauf gröber werden, sobald das feinste Modell seinen Vorhersagehorizont erreicht.</p>
+              )}
               <p><strong>Datenbasis</strong> – Konsens (Median) aus den Wettermodellen via Open-Meteo. Mitglieder je Größe (jetzt): Temperatur / Feuchte / Wind <strong>{ens.now.base}</strong> · Sonnenstrahlung <strong>{ens.now.rad}</strong> · Bewölkung <strong>{ens.now.cloud}</strong>. Abgeleitete Größen erben die Zahl ihrer Eingänge (gefühlt Schatten/Sonne: {ens.now.base}, gefühlt bewölkt: {ens.now.rad}); „Sonne (klar)“ ist reine Astronomie (kein Modell). Mit wachsendem Horizont fallen Modelle nacheinander aus – die Spannen im Verlauf stützen sich hinten auf weniger Mitglieder.</p>
               <ul className="model-list">
                 {ens.members.map(m => (
@@ -1014,6 +1030,7 @@ export default function App() {
   // different hour (or vanish) once the window moves. null → "now".
   const [selTs,       setSelTs]       = useState(null)
   const [wxMeta,      setWxMeta]      = useState(null) // { sources, spread }
+  const [gridPlace,   setGridPlace]   = useState(null) // reverse-geocoded name of wxMeta.grid
   const [updatedAt,   setUpdatedAt]   = useState(null) // ms of last successful fetch
   const [nowTick,     setNowTick]     = useState(0)    // forces the freshness label to refresh
 
@@ -1029,6 +1046,18 @@ export default function App() {
     if (w.sources) setWxMeta({ sources: w.sources, spread: w.spread, grid: w.grid })
     setUpdatedAt(Date.now())
   }
+
+  // Reverse-geocode the grid cell (not the raw query point) so the methodology
+  // section can name a place for whichever model is currently sharpest there,
+  // instead of just bare coordinates. Re-runs only when the grid cell itself
+  // moves (a new location, or the API resolving to a different cell nearby).
+  const gridLat = wxMeta?.grid?.lat, gridLon = wxMeta?.grid?.lon
+  useEffect(() => {
+    if (gridLat == null || gridLon == null) return
+    let cancelled = false
+    reverseGeocode(gridLat, gridLon).then(name => { if (!cancelled) setGridPlace(name) }).catch(() => {})
+    return () => { cancelled = true }
+  }, [gridLat, gridLon])
 
   // Sync outdoor inputs from the interpolated "now" reading whenever a fresh
   // forecast arrives (same source as the Gefühlt tab, quantized to the slider
@@ -1067,15 +1096,7 @@ export default function App() {
           const w = await fetchCurrentWeather(coords.latitude, coords.longitude)
           applyWeather(w)
           fetchHourlyForecast(coords.latitude, coords.longitude).then(setHours).catch(() => {})
-          let name = null
-          try {
-            const r = await fetch(
-              `https://nominatim.openstreetmap.org/reverse?lat=${coords.latitude}&lon=${coords.longitude}&format=json`,
-              { headers: { 'Accept-Language': 'de' } }
-            )
-            const g = await r.json()
-            name = g.address?.city ?? g.address?.town ?? g.address?.village ?? g.address?.county ?? null
-          } catch {}
+          const name = await reverseGeocode(coords.latitude, coords.longitude).catch(() => null)
           setGeoLocation({ lat: coords.latitude, lon: coords.longitude, name })
           setLocSource('gps')
           setGeoStatus('ok')
@@ -1216,6 +1237,7 @@ export default function App() {
             outRH={outRH}
             hours={hours}
             wxMeta={geoStatus === 'ok' ? wxMeta : null}
+            gridPlace={geoStatus === 'ok' ? gridPlace : null}
             lat={geoLocation?.lat ?? 50}
             lon={geoLocation?.lon ?? 10}
             selTs={selTs}
