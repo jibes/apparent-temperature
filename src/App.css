@@ -445,9 +445,19 @@ input[type='range'] {
   min-width: 0;
   overflow-x: auto;
   overflow-y: hidden;
-  scrollbar-width: thin;
   -webkit-overflow-scrolling: touch;
+  /* Themed scrollbar — only actually visible on desktop; mobile browsers
+     use their own overlay/auto-hiding scrollbar regardless of these rules. */
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
 }
+.fc-scroll::-webkit-scrollbar { height: 6px; }
+.fc-scroll::-webkit-scrollbar-track { background: transparent; }
+.fc-scroll::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 999px;
+}
+.fc-scroll::-webkit-scrollbar-thumb:hover { background: var(--muted); }
 .fc-scroll svg { display: block; }
 .fc-grid     { stroke: var(--border); stroke-width: 1; opacity: 0.5; }
 .fc-daygrid  { stroke: var(--muted);  stroke-width: 1.2; opacity: 0.55; }
