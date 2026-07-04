@@ -446,6 +446,8 @@ function ForecastChart({ hours, lat, lon, active, selTs, setSelTs, visible }) {
   const svgRef = useRef()
   const scrollRef = useRef()
   const scrollPos = useRef(0)
+  const drag = useRef({ active: false, moved: false, startX: 0, startScrollLeft: 0, pointerType: 'mouse' })
+  const [dragging, setDragging] = useState(false)
   const [w, setW] = useState(360)
   useEffect(() => {
     if (!wrapRef.current) return
@@ -571,6 +573,37 @@ function ForecastChart({ hours, lat, lon, active, selTs, setSelTs, visible }) {
     setSelTs(nowDist < hourDist ? null : hours[idx].ts)
   }
 
+  // Click selects a point; drag only scrolls — the two are disambiguated by
+  // movement, not by input type, so both mouse and touch behave the same way.
+  // Touch already scrolls natively (touchAction: pan-x below), so the manual
+  // scrollLeft assignment here is mouse-only — doing it for touch too would
+  // fight the browser's own scroll and jitter.
+  const DRAG_THRESHOLD = 4
+  function onDown(e) {
+    e.currentTarget.setPointerCapture(e.pointerId)
+    drag.current = {
+      active: true, moved: false, startX: e.clientX,
+      startScrollLeft: scrollRef.current ? scrollRef.current.scrollLeft : 0,
+      pointerType: e.pointerType,
+    }
+    if (e.pointerType === 'mouse') setDragging(true)
+  }
+  function onMove(e) {
+    const d = drag.current
+    if (!d.active) return
+    const dx = e.clientX - d.startX
+    if (Math.abs(dx) > DRAG_THRESHOLD) d.moved = true
+    if (d.moved && d.pointerType === 'mouse' && scrollRef.current) {
+      scrollRef.current.scrollLeft = d.startScrollLeft - dx
+    }
+  }
+  function onUp(e) {
+    const d = drag.current
+    if (d.active && !d.moved) pick(e)
+    drag.current.active = false
+    if (dragging) setDragging(false)
+  }
+
   return (
     <div className="forecast" ref={wrapRef}>
       <div className="forecast-head">
@@ -591,8 +624,11 @@ function ForecastChart({ hours, lat, lon, active, selTs, setSelTs, visible }) {
           <svg
             ref={svgRef}
             width={chartW} height={H} viewBox={`0 0 ${chartW} ${H}`} role="img"
-            onPointerDown={pick}
-            onPointerMove={e => { if (e.buttons) pick(e) }}
+            onPointerDown={onDown}
+            onPointerMove={onMove}
+            onPointerUp={onUp}
+            onPointerCancel={onUp}
+            className={dragging ? 'dragging' : ''}
             style={{ touchAction: 'pan-x' }}
           >
             {xNow > 0 && (
