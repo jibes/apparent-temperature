@@ -619,7 +619,13 @@ function ForecastChart({ hours, lat, lon, active, selTs, setSelTs, visible }) {
     <div className="forecast" ref={wrapRef}>
       <div className="forecast-head">
         <span className="section-name muted">{spanDays}-Tage-Vorschau</span>
-        <button type="button" className="fc-now-btn" onClick={jumpToNow} title="Zu jetzt springen" aria-label="Zu jetzt springen">
+        <button
+          type="button"
+          className={`fc-now-btn ${selectingNow ? 'live' : ''}`}
+          onClick={jumpToNow}
+          title={selectingNow ? 'Live – folgt der aktuellen Zeit' : 'Zu jetzt springen'}
+          aria-label="Zu jetzt springen"
+        >
           <i className="fc-now-dot" /> Jetzt
         </button>
       </div>

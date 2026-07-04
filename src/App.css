@@ -436,12 +436,17 @@ input[type='range'] {
   cursor: pointer;
   transition: border-color 0.15s, color 0.15s;
 }
+/* Green + synced while live (selection follows the clock); grey once a
+   specific point elsewhere has been picked and it's no longer tracking. */
+.fc-now-btn.live { color: #86efac; border-color: #166534; }
+.fc-now-btn.live .fc-now-dot { background: #86efac; }
 .fc-now-btn:hover { color: #86efac; border-color: #166534; }
+.fc-now-btn:hover .fc-now-dot { background: #86efac; }
 .fc-now-dot {
   width: 0.4rem;
   height: 0.4rem;
   border-radius: 50%;
-  background: #86efac;
+  background: var(--muted);
   flex-shrink: 0;
 }
 .fc-metrics {
