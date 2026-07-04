@@ -25,19 +25,14 @@ body {
   padding: 1.25rem 0.9rem 4rem;
 }
 
-/* ── Header ── */
-header {
-  text-align: center;
+/* ── Top bar: tabs (heading) + location, one sleek box instead of the
+   previous alternating boxed/unboxed rows ── */
+.top-bar {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
   margin-bottom: 0.7rem;
-}
-/* Demoted to a small eyebrow label — the location chip and tabs below are
-   what actually changes and matters on repeat visits, not the app name. */
-h1 {
-  font-size: 0.8rem;
-  font-weight: 800;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--muted);
+  overflow: hidden;
 }
 
 /* ── Geo bar ── */
@@ -46,7 +41,8 @@ h1 {
   align-items: center;
   justify-content: center;
   gap: 0.35rem;
-  margin-top: 0.4rem;
+  padding: 0.55rem 0.6rem;
+  border-top: 1px solid var(--border);
 }
 .geo-ok {
   font-size: 0.78rem;
@@ -103,16 +99,11 @@ h1 {
 .geo-search:focus { border-color: var(--accent); }
 .geo-search::placeholder { color: var(--muted); }
 
-/* ── Tabs ── */
+/* ── Tabs: the top row of .top-bar, not its own box ── */
 .tabs {
   display: flex;
   gap: 0.3rem;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--r);
-  padding: 0.2rem;
-  margin-top: 0.7rem;
-  margin-bottom: 0.7rem;
+  padding: 0.3rem;
 }
 .tab {
   flex: 1;

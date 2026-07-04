@@ -1205,10 +1205,22 @@ export default function App() {
 
   return (
     <div className="app">
-      <header>
-        <h1>Gefühlte Temperatur</h1>
+      {/* No separate title: the tabs are the heading, with the (global, not
+          tab-specific) location right below in the same box — one sleek
+          unit instead of alternating boxed/unboxed rows. */}
+      <div className="top-bar">
+        <nav className="tabs">
+          <button
+            className={`tab ${tab === 'felt' ? 'active' : ''}`}
+            onClick={() => setTab('felt')}
+          >Gefühlt</button>
+          <button
+            className={`tab ${tab === 'lueften' ? 'active' : ''}`}
+            onClick={() => setTab('lueften')}
+          >Lüften</button>
+        </nav>
         {/* Freshness folds into the GeoBar chip (see there) instead of its
-            own row, so the header stays to one compact line. */}
+            own row. */}
         <GeoBar
           status={geoStatus}
           location={geoLocation}
@@ -1217,18 +1229,7 @@ export default function App() {
           onSearch={searchWeather}
           onLocate={loadWeather}
         />
-      </header>
-
-      <nav className="tabs">
-        <button
-          className={`tab ${tab === 'felt' ? 'active' : ''}`}
-          onClick={() => setTab('felt')}
-        >Gefühlt</button>
-        <button
-          className={`tab ${tab === 'lueften' ? 'active' : ''}`}
-          onClick={() => setTab('lueften')}
-        >Lüften</button>
-      </nav>
+      </div>
 
       {/* Both tabs stay mounted (inactive one hidden) so the graph selection,
           toggles and scroll position survive switching back and forth. */}
