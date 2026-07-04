@@ -726,19 +726,28 @@ function FeltTab({ outTemp, outRH, hours, wxMeta, lat, lon }) {
   const [active, setActive] = useState({ temp: true, ah: true, wind: true, csun: true, clouds: true })
   const toggle = key => setActive(a => ({ ...a, [key]: !a[key] }))
 
-  const dp   = dewPoint(outTemp, outRH)
   const grid = wxMeta?.grid
-
   const feltDef = DERIVED.find(d => d.felt)
   const nowIdx  = hours && hours.length ? nowHourIndex(hours) : null
-  // Interpolate between this hour and the next so the headline reflects the
-  // exact current moment rather than snapping to whichever hourly sample is
-  // nearest — the hourly data is only exact on the hour.
+
+  // Everything "now" on this tab is interpolated between the current hour and
+  // the next (the hourly data is only exact on the hour) so the headline value,
+  // its air-temp baseline, the Schwüle dew point and the graph readout all read
+  // the same moment. The snapped outTemp/outRH state stays for the Lüften tab.
+  const frac = nowIdx != null ? nowFraction(hours, nowIdx) : 0
+  const lerp = sel => {
+    const a = hours[nowIdx], b = hours[nowIdx + 1]
+    return b ? sel(a) + (sel(b) - sel(a)) * frac : sel(a)
+  }
+  const airTemp = nowIdx != null ? lerp(h => h.temp)     : outTemp
+  const airRH   = nowIdx != null ? lerp(h => h.humidity) : outRH
+  const dp      = dewPoint(airTemp, airRH)
+
   const nowPoint = (nowIdx != null && feltDef.show(active))
     ? interpPoint(
         feltPoints([hours[nowIdx]], { lat, lon }, active)[0],
         hours[nowIdx + 1] ? feltPoints([hours[nowIdx + 1]], { lat, lon }, active)[0] : null,
-        nowFraction(hours, nowIdx)
+        frac
       )
     : null
   const ens = ensembleInfo(hours)
@@ -746,7 +755,7 @@ function FeltTab({ outTemp, outRH, hours, wxMeta, lat, lon }) {
   return (
     <>
       <div className="felt-top">
-        <FeltNow point={nowPoint} airTemp={outTemp} dp={dp} />
+        <FeltNow point={nowPoint} airTemp={airTemp} dp={dp} />
       </div>
 
       <MetricToggles active={active} onToggle={toggle} />
