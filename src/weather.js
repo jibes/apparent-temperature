@@ -158,6 +158,7 @@ export async function fetchHourlyForecast(lat, lon, futureHours = 384, pastHours
       humidity: median(samples.map(s => s.rh)),
       wind:     median(samples.map(s => s.w)),
       solar:    median(samples.map(s => s.s).filter(x => x != null)) ?? 0,
+      clouds:   median(samples.map(s => s.c).filter(x => x != null)),
     }
   }).filter(Boolean)
 

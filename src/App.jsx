@@ -12,6 +12,13 @@ import './App.css'
 
 function fmt1(n) { return (Math.round(n * 10) / 10).toFixed(1) }
 
+// Index of the hour bucket containing "now" — the single definition of
+// "current" shared by the headline value, the graph, and the outdoor
+// reading, so they never disagree about which sample is "now".
+function nowHourIndex(hours) {
+  return Math.max(0, hours.findIndex(h => h.ts + 3600000 > Date.now()))
+}
+
 // Relative "updated X ago" label.
 function agoLabel(ms) {
   if (!ms) return null
@@ -468,8 +475,7 @@ function ForecastChart({ hours, lat, lon, active }) {
     if (hr !== 0 && hr % labelStep === 0) labels.push(i)
   })
 
-  const nowMs  = Date.now()
-  const nowIdx = Math.max(0, hours.findIndex(h => h.ts + 3600000 > nowMs))
+  const nowIdx = nowHourIndex(hours)
   const spanDays = Math.round((n - nowIdx) / 24)
   const si  = selIdx == null ? nowIdx : Math.min(selIdx, n - 1)
   const selDate = hours[si].time
@@ -599,7 +605,7 @@ function distKm(lat1, lon1, lat2, lon2) {
 function ensembleInfo(hours) {
   if (!hours || !hours.length) return null
   const now = Date.now()
-  const nowIdx = Math.max(0, hours.findIndex(h => h.ts + 3600000 > now))
+  const nowIdx = nowHourIndex(hours)
   const nowSamples = hours[nowIdx].samples
 
   const members = Object.keys(MODEL_INFO).map(key => {
@@ -685,7 +691,7 @@ function FeltTab({ outTemp, outRH, hours, wxMeta, lat, lon }) {
   const grid = wxMeta?.grid
 
   const feltDef = DERIVED.find(d => d.felt)
-  const nowIdx  = hours && hours.length ? Math.max(0, hours.findIndex(h => h.ts + 3600000 > Date.now())) : null
+  const nowIdx  = hours && hours.length ? nowHourIndex(hours) : null
   const nowPoint = (nowIdx != null && feltDef.show(active))
     ? feltPoints([hours[nowIdx]], { lat, lon }, active)[0]
     : null
@@ -876,19 +882,34 @@ export default function App() {
   const [updatedAt,   setUpdatedAt]   = useState(null) // ms of last successful fetch
   const [nowTick,     setNowTick]     = useState(0)    // forces the freshness label to refresh
 
-  // Apply fetched weather to outdoor inputs; prefill indoor temp once on first
-  // load so the Lüften tab starts from a sensible baseline (= outdoor temp).
+  // The `current` endpoint only feeds methodology metadata (member count,
+  // spread, grid cell) here — the actual outdoor temp/RH/wind/clouds used
+  // everywhere (headline, graph, Lüften tab) come from the hourly forecast's
+  // "now" bucket instead (effect below), so there is exactly one definition
+  // of "the current outdoor reading" instead of two independent fetches that
+  // can disagree (they hit the same models but current vs. hourly aggregation
+  // differ, which showed up as a real gap e.g. in humidity).
   const prefilledRef = useRef(false)
   function applyWeather(w) {
-    setOutTemp(w.temp); setOutRH(w.humidity); setWind(w.wind)
-    if (w.clouds != null) setClouds(w.clouds)
     if (w.sources) setWxMeta({ sources: w.sources, spread: w.spread, grid: w.grid })
     setUpdatedAt(Date.now())
+  }
+
+  // Sync outdoor inputs from the hourly forecast's current-hour bucket
+  // whenever a fresh forecast arrives; prefill indoor temp once on first
+  // load so the Lüften tab starts from a sensible baseline (= outdoor temp).
+  useEffect(() => {
+    if (!hours || !hours.length) return
+    const h = hours[nowHourIndex(hours)]
+    setOutTemp(Math.round(h.temp * 2) / 2)
+    setOutRH(Math.round(h.humidity))
+    setWind(Math.round(h.wind))
+    if (h.clouds != null) setClouds(Math.round(h.clouds))
     if (!prefilledRef.current) {
-      setInTemp(w.temp)
+      setInTemp(Math.round(h.temp * 2) / 2)
       prefilledRef.current = true
     }
-  }
+  }, [hours])
 
   async function loadWeather() {
     if (!navigator.geolocation) { setGeoStatus('denied'); return }
