@@ -449,12 +449,12 @@ input[type='range'] {
   background: var(--muted);
   flex-shrink: 0;
 }
-/* One row, no wrapping — circle icon + short caption per metric, color-coded
-   via the circle (an emoji can't be recolored, so the ring/fill carries it). */
+/* One row, no wrapping — rounded-square tiles (matching the app's --rs
+   corner radius, not circles) stretched to fill the width evenly, icon
+   badge + caption both inside the same bordered box. */
 .fc-metrics {
   display: flex;
-  justify-content: space-between;
-  gap: 0.2rem;
+  gap: 0.3rem;
   margin-bottom: 0.8rem;
 }
 .fc-metric {
@@ -463,33 +463,39 @@ input[type='range'] {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 0.28rem;
-  background: none;
-  border: none;
-  padding: 0.15rem 0;
+  gap: 0.2rem;
+  background: #1e2235;
+  border: 1px solid var(--border);
+  border-radius: var(--rs);
+  padding: 0.4rem 0.2rem 0.35rem;
   cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+.fc-metric.active {
+  background: color-mix(in srgb, var(--metric-color) 14%, #1e2235);
+  border-color: var(--metric-color);
 }
 .fc-metric-circle {
-  width: 2.3rem;
-  height: 2.3rem;
-  border-radius: 50%;
+  width: 1.7rem;
+  height: 1.7rem;
+  border-radius: var(--rs);
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 1.05rem;
+  font-size: 0.92rem;
   line-height: 1;
-  border: 1.5px solid color-mix(in srgb, var(--metric-color) 45%, transparent);
-  background: transparent;
+  border: 1px solid color-mix(in srgb, var(--metric-color) 45%, transparent);
+  background: color-mix(in srgb, var(--metric-color) 12%, transparent);
   opacity: 0.7;
   transition: background 0.15s, border-color 0.15s, opacity 0.15s;
 }
 .fc-metric.active .fc-metric-circle {
-  background: color-mix(in srgb, var(--metric-color) 24%, transparent);
+  background: color-mix(in srgb, var(--metric-color) 30%, transparent);
   border-color: var(--metric-color);
   opacity: 1;
 }
 .fc-metric-label {
-  font-size: 0.62rem;
+  font-size: 0.6rem;
   font-weight: 600;
   color: var(--muted);
   white-space: nowrap;
