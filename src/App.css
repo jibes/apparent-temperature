@@ -571,13 +571,25 @@ input[type='range'] {
 .fc-grid6    { stroke: var(--border); stroke-width: 1; opacity: 0.5; }
 .fc-gridminor{ stroke: var(--border); stroke-width: 1; opacity: 0.18; }
 .fc-empty { fill: var(--muted); font-size: 11px; }
-.fc-ylab, .fc-xlab, .fc-hourlab {
+.fc-xlab, .fc-hourlab {
   fill: var(--muted);
   font-size: 9px;
   font-variant-numeric: tabular-nums;
 }
 .fc-xlab { font-weight: 700; fill: var(--text); }
 .fc-hourlab { font-size: 8px; opacity: 0.8; }
+/* Y-axis ticks drawn inside the plot itself — a stroked halo (paint-order:
+   stroke) keeps them legible over whatever line/band happens to sit there,
+   standing in for a background a plain SVG <text> can't have. */
+.fc-ylab-inside {
+  fill: var(--muted);
+  font-size: 9px;
+  font-variant-numeric: tabular-nums;
+  paint-order: stroke;
+  stroke: var(--surface);
+  stroke-width: 3px;
+  stroke-linejoin: round;
+}
 .fc-past { fill: #000; opacity: 0.28; }
 .fc-now { stroke: #86efac; stroke-width: 1.4; opacity: 0.85; }
 .fc-nowlab { fill: #86efac; font-size: 8.5px; font-weight: 700; }

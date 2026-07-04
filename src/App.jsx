@@ -477,10 +477,15 @@ function ForecastChart({ hours, lat, lon, active, selTs, setSelTs, visible }) {
   if (!series) return null
 
   const H = 260, padT = 10, padB = 24, padR = 10
-  // Labelled axis only when every visible series shares one unit (one scale).
   const units = [...new Set(series.map(s => s.unit))]
   const single = units.length === 1
-  const axisW = single ? 34 : 6
+  // Constant — this used to widen to 34px for a labelled side gutter when a
+  // single shared unit made ticks meaningful, but that made the plot itself
+  // resize (and everything scroll-jump) whenever toggling a metric changed
+  // `single`. Axis labels (when shown) now render inside the scrollable
+  // plot instead of in a separate reserved column, so the gutter never
+  // needs to be wider than this.
+  const axisW = 6
   const innerH = H - padT - padB
   const n = hours.length
 
@@ -633,11 +638,7 @@ function ForecastChart({ hours, lat, lon, active, selTs, setSelTs, visible }) {
       </div>
 
       <div className="fc-plot">
-        <svg className="fc-axis" width={axisW} height={H} viewBox={`0 0 ${axisW} ${H}`} aria-hidden="true">
-          {grid.map((g, k) => g.label != null && (
-            <text key={k} x={axisW - 3} y={g.y + 3} className="fc-ylab" textAnchor="end">{g.label}</text>
-          ))}
-        </svg>
+        <svg className="fc-axis" width={axisW} height={H} viewBox={`0 0 ${axisW} ${H}`} aria-hidden="true" />
         <div
           className="fc-scroll"
           ref={scrollRef}
@@ -658,6 +659,12 @@ function ForecastChart({ hours, lat, lon, active, selTs, setSelTs, visible }) {
             )}
             {grid.map((g, k) => (
               <line key={k} x1={0} x2={chartW} y1={g.y} y2={g.y} className="fc-grid" />
+            ))}
+            {/* Tick labels live inside the scrollable plot (at its true left
+                edge) instead of a separate reserved column — a halo via
+                stroke keeps them legible over whatever line/band is there. */}
+            {single && grid.map((g, k) => g.label != null && (
+              <text key={`yl${k}`} x={6} y={g.y - 3} className="fc-ylab-inside">{g.label}</text>
             ))}
             {minor.map(i => (
               <line key={`mn${i}`} x1={x(i)} x2={x(i)} y1={padT} y2={padT + innerH} className="fc-gridminor" />
