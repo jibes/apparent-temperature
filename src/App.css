@@ -405,6 +405,15 @@ input[type='range'] {
   text-align: center;
   padding: 0.2rem 0.3rem 1rem;
   margin-bottom: 0.2rem;
+  /* Fixed floor sized for the tallest realistic case (value + category +
+     a 2-line hint, e.g. once the Schwüle clause appears) — content that
+     varies (fallback vs. full state, Schwüle on/off, wrapping) then just
+     centers within this space instead of growing/shrinking it and pushing
+     the metric tiles and graph below up and down as it changes. */
+  min-height: 10rem;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
 }
 .felt-now .ap-val {
   font-size: 3.6rem;
