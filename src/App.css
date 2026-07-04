@@ -117,18 +117,22 @@ h1 {
 .tab {
   flex: 1;
   background: none;
-  border: none;
+  border: 1px solid transparent;
   color: var(--muted);
   font-size: 0.88rem;
   font-weight: 700;
-  padding: 0.42rem 0.5rem;
+  padding: calc(0.42rem - 1px) calc(0.5rem - 1px);
   border-radius: var(--rs);
   cursor: pointer;
-  transition: background 0.15s, color 0.15s;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
 }
+/* Same "selected" language as everywhere else (metric toggle chips): a
+   tinted, bordered pill — not a solid fill — so tabs don't read as a
+   one-off, louder exception to the rest of the app's active-state style. */
 .tab.active {
-  background: var(--accent);
-  color: #0d0f18;
+  background: #2a2f55;
+  border-color: var(--accent);
+  color: var(--text);
 }
 
 /* ── Collapsible section cards ── */
