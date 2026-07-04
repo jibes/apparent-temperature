@@ -966,25 +966,31 @@ export default function App() {
   }, [])
 
   // Keep the freshness label ticking; auto-refresh every 5 min while the tab
-  // is active, and immediately on reactivation if the data has gone stale
-  // (covers the tab having been backgrounded/throttled past the interval).
+  // is visible, and immediately whenever the app is reactivated and the data
+  // has gone stale. "Reactivated" covers two distinct browser signals:
+  // visibilitychange (tab switched back to / unminimized) and window focus
+  // (OS brought this browser window back to front without changing tabs) —
+  // relying on only one misses the other, which is why a stale reload could
+  // sit unrefreshed until the 5-min interval happened to land.
   useEffect(() => {
     const REFRESH_MS = 5 * 60000
     const id = setInterval(() => setNowTick(t => t + 1), 60000)
     const refreshId = setInterval(() => {
       if (document.visibilityState === 'visible') refresh()
     }, REFRESH_MS)
-    function onVisible() {
+    function refreshIfStale() {
       if (document.visibilityState === 'visible' &&
           updatedAt && Date.now() - updatedAt > REFRESH_MS) {
         refresh()
       }
     }
-    document.addEventListener('visibilitychange', onVisible)
+    document.addEventListener('visibilitychange', refreshIfStale)
+    window.addEventListener('focus', refreshIfStale)
     return () => {
       clearInterval(id)
       clearInterval(refreshId)
-      document.removeEventListener('visibilitychange', onVisible)
+      document.removeEventListener('visibilitychange', refreshIfStale)
+      window.removeEventListener('focus', refreshIfStale)
     }
   }, [updatedAt, locSource, geoLocation])
 
