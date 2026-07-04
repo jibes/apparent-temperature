@@ -965,18 +965,27 @@ export default function App() {
     }
   }, [])
 
-  // Keep the freshness label ticking; auto-refresh when the tab is refocused
-  // and the data has gone stale (>10 min).
+  // Keep the freshness label ticking; auto-refresh every 5 min while the tab
+  // is active, and immediately on reactivation if the data has gone stale
+  // (covers the tab having been backgrounded/throttled past the interval).
   useEffect(() => {
+    const REFRESH_MS = 5 * 60000
     const id = setInterval(() => setNowTick(t => t + 1), 60000)
+    const refreshId = setInterval(() => {
+      if (document.visibilityState === 'visible') refresh()
+    }, REFRESH_MS)
     function onVisible() {
       if (document.visibilityState === 'visible' &&
-          updatedAt && Date.now() - updatedAt > 10 * 60000) {
+          updatedAt && Date.now() - updatedAt > REFRESH_MS) {
         refresh()
       }
     }
     document.addEventListener('visibilitychange', onVisible)
-    return () => { clearInterval(id); document.removeEventListener('visibilitychange', onVisible) }
+    return () => {
+      clearInterval(id)
+      clearInterval(refreshId)
+      document.removeEventListener('visibilitychange', onVisible)
+    }
   }, [updatedAt, locSource, geoLocation])
 
   return (
