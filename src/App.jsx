@@ -436,17 +436,28 @@ function lineWidth(inputs) {
 // Multi-day forecast chart. BASE inputs are toggled from the shared selector
 // above (same `active` state that drives the current-value readout); DERIVED
 // outputs appear when their inputs are active. Same units share one scale.
-function ForecastChart({ hours, lat, lon, active }) {
+function ForecastChart({ hours, lat, lon, active, selIdx, setSelIdx, visible }) {
   const wrapRef = useRef()
   const svgRef = useRef()
+  const scrollRef = useRef()
+  const scrollPos = useRef(0)
   const [w, setW] = useState(360)
-  const [selIdx, setSelIdx] = useState(null) // null → defaults to "now"
   useEffect(() => {
     if (!wrapRef.current) return
-    const ro = new ResizeObserver(es => setW(es[0].contentRect.width))
+    // Ignore the 0-width report when the tab is hidden (display:none) so the
+    // last good width is kept and the chart doesn't collapse.
+    const ro = new ResizeObserver(es => {
+      const width = es[0].contentRect.width
+      if (width > 0) setW(width)
+    })
     ro.observe(wrapRef.current)
     return () => ro.disconnect()
   }, [])
+  // Restore horizontal scroll when this tab is shown again — display:none can
+  // reset scrollLeft in some browsers, so we reapply the saved position.
+  useEffect(() => {
+    if (visible && scrollRef.current) scrollRef.current.scrollLeft = scrollPos.current
+  }, [visible])
 
   const activeKey = Object.keys(active).filter(k => active[k]).sort().join(',')
   const series = useMemo(() => {
@@ -554,7 +565,11 @@ function ForecastChart({ hours, lat, lon, active }) {
             <text key={k} x={axisW - 3} y={g.y + 3} className="fc-ylab" textAnchor="end">{g.label}</text>
           ))}
         </svg>
-        <div className="fc-scroll">
+        <div
+          className="fc-scroll"
+          ref={scrollRef}
+          onScroll={e => { scrollPos.current = e.currentTarget.scrollLeft }}
+        >
           <svg
             ref={svgRef}
             width={chartW} height={H} viewBox={`0 0 ${chartW} ${H}`} role="img"
@@ -742,7 +757,7 @@ function FeltNow({ point, airTemp, dp }) {
   )
 }
 
-function FeltTab({ outTemp, outRH, hours, wxMeta, lat, lon }) {
+function FeltTab({ outTemp, outRH, hours, wxMeta, lat, lon, selIdx, setSelIdx, visible }) {
   const [active, setActive] = useState({ temp: true, ah: true, wind: true, csun: true, clouds: true })
   const toggle = key => setActive(a => ({ ...a, [key]: !a[key] }))
 
@@ -776,7 +791,8 @@ function FeltTab({ outTemp, outRH, hours, wxMeta, lat, lon }) {
 
       <MetricToggles active={active} onToggle={toggle} />
 
-      <ForecastChart hours={hours} lat={lat} lon={lon} active={active} />
+      <ForecastChart hours={hours} lat={lat} lon={lon} active={active}
+        selIdx={selIdx} setSelIdx={setSelIdx} visible={visible} />
 
       <details className="section-card formula-card">
         <summary className="section-summary">
@@ -861,12 +877,21 @@ function fmtSlot(start, end) {
 
 // Ventilation tab (indoor + outdoor: temp + humidity only)
 
-function LueftenTab({ inTemp, setInTemp, inRH, setInRH, outTemp, setOutTemp, outRH, setOutRH, hours }) {
+function LueftenTab({ inTemp, setInTemp, inRH, setInRH, outTemp, setOutTemp, outRH, setOutRH, hours, graphPoint }) {
   const verdict   = ventVerdict(inTemp, inRH, outTemp, outRH)
   const feltIn    = indoorApparentTemp(inTemp, inRH).value
   const feltOut   = indoorApparentTemp(outTemp, outRH).value
   const win       = bestVentWindow(hours, inTemp, inRH)
   const comfyNow  = comfortPenalty(inTemp, inRH) < 0.5
+
+  // Pull the temp/humidity of the point currently selected in the Gefühlt-tab
+  // graph (or "now") into the outdoor sliders, so a forecast hour can be
+  // explored here without re-entering values by hand. Shown only when it would
+  // actually change the sliders (i.e. they don't already match that point).
+  const gpTemp = graphPoint && Math.round(graphPoint.temp * 2) / 2
+  const gpRH   = graphPoint && Math.round(graphPoint.humidity)
+  const canImport = graphPoint && (gpTemp !== outTemp || gpRH !== outRH)
+  const importGraph = () => { setOutTemp(gpTemp); setOutRH(gpRH) }
 
   return (
     <>
@@ -895,6 +920,11 @@ function LueftenTab({ inTemp, setInTemp, inRH, setInRH, outTemp, setOutTemp, out
           </span>
         </summary>
         <div className="section-body">
+          {canImport && (
+            <button type="button" className="graph-import" onClick={importGraph}>
+              ⟳ Graphpunkt übernehmen ({graphPoint.label}: {fmt1(graphPoint.temp)} °C · {gpRH} %)
+            </button>
+          )}
           <Slider label="Temperatur"       value={outTemp} onChange={setOutTemp} min={-30} max={50}  step={0.5} unit="°C" />
           <Slider label="Luftfeuchtigkeit" value={outRH}   onChange={setOutRH}   min={0}   max={100} step={1}   unit="%" />
         </div>
@@ -948,6 +978,7 @@ export default function App() {
   const [geoLocation, setGeoLocation] = usePersistentState('geoLocation', null)
   const [locSource,   setLocSource]   = usePersistentState('locSource', 'gps') // 'gps' | 'search'
   const [hours,       setHours]       = useState(null)
+  const [selIdx,      setSelIdx]      = useState(null) // graph selection (null → "now"), lifted so both tabs share it
   const [wxMeta,      setWxMeta]      = useState(null) // { sources, spread }
   const [clouds,      setClouds]      = useState(null) // current cloud cover %
   const [updatedAt,   setUpdatedAt]   = useState(null) // ms of last successful fetch
@@ -1087,6 +1118,21 @@ export default function App() {
     }
   }, [updatedAt, locSource, geoLocation])
 
+  // Temp/humidity of the point currently selected in the graph (or the
+  // interpolated "now" when nothing is tapped), for the Lüften import button.
+  const graphPoint = (() => {
+    if (geoStatus !== 'ok' || !hours || !hours.length) return null
+    if (selIdx == null) {
+      const nv = nowReading(hours)
+      return nv && { temp: nv.temp, humidity: nv.humidity, label: 'jetzt' }
+    }
+    const h = hours[Math.min(selIdx, hours.length - 1)]
+    return {
+      temp: h.temp, humidity: h.humidity,
+      label: `${WEEKDAY[h.time.getDay()]} ${String(h.time.getHours()).padStart(2, '0')}:00`,
+    }
+  })()
+
   return (
     <div className="app">
       <header>
@@ -1117,24 +1163,32 @@ export default function App() {
         >Lüften</button>
       </nav>
 
+      {/* Both tabs stay mounted (inactive one hidden) so the graph selection,
+          toggles and scroll position survive switching back and forth. */}
       <main>
-        {tab === 'felt'
-          ? <FeltTab
-              outTemp={outTemp}
-              outRH={outRH}
-              hours={hours}
-              wxMeta={geoStatus === 'ok' ? wxMeta : null}
-              lat={geoLocation?.lat ?? 50}
-              lon={geoLocation?.lon ?? 10}
-            />
-          : <LueftenTab
-              inTemp={inTemp}   setInTemp={setInTemp}
-              inRH={inRH}       setInRH={setInRH}
-              outTemp={outTemp} setOutTemp={setOutTemp}
-              outRH={outRH}     setOutRH={setOutRH}
-              hours={geoStatus === 'ok' ? hours : null}
-            />
-        }
+        <div style={{ display: tab === 'felt' ? undefined : 'none' }}>
+          <FeltTab
+            outTemp={outTemp}
+            outRH={outRH}
+            hours={hours}
+            wxMeta={geoStatus === 'ok' ? wxMeta : null}
+            lat={geoLocation?.lat ?? 50}
+            lon={geoLocation?.lon ?? 10}
+            selIdx={selIdx}
+            setSelIdx={setSelIdx}
+            visible={tab === 'felt'}
+          />
+        </div>
+        <div style={{ display: tab === 'lueften' ? undefined : 'none' }}>
+          <LueftenTab
+            inTemp={inTemp}   setInTemp={setInTemp}
+            inRH={inRH}       setInRH={setInRH}
+            outTemp={outTemp} setOutTemp={setOutTemp}
+            outRH={outRH}     setOutRH={setOutRH}
+            hours={geoStatus === 'ok' ? hours : null}
+            graphPoint={graphPoint}
+          />
+        </div>
       </main>
     </div>
   )

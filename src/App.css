@@ -421,6 +421,23 @@ input[type='range'] {
   color: var(--text);
 }
 
+/* Import current graph selection into the outdoor sliders */
+.graph-import {
+  display: block;
+  width: 100%;
+  margin-bottom: 0.7rem;
+  padding: 0.5rem 0.7rem;
+  background: #2a2f55;
+  border: 1px solid var(--accent);
+  border-radius: var(--rs);
+  color: var(--text);
+  font-size: 0.76rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, opacity 0.15s;
+}
+.graph-import:hover { background: #343a68; }
+
 /* ── Top: single headline "Gefühlt" value, borderless ── */
 .felt-top {
   text-align: center;
