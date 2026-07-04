@@ -221,7 +221,7 @@ function VentTable({ Tin, RHin, Tout, RHout }) {
 
 // Geo status + location search
 
-function GeoBar({ status, location, onRefresh, onSearch, onLocate }) {
+function GeoBar({ status, location, freshness, onRefresh, onSearch, onLocate }) {
   const [searching, setSearching] = useState(false)
   const [query, setQuery]         = useState('')
   const inputRef                  = useRef()
@@ -265,17 +265,22 @@ function GeoBar({ status, location, onRefresh, onSearch, onLocate }) {
 
   return (
     <div className="geo-bar">
+      {/* Freshness folds into whichever status chip is showing, instead of
+          its own row — keeps the header to one compact line. */}
       {status === 'loading' || status === 'locating'
         ? <span className="geo-msg loading">Standort wird ermittelt…</span>
         : status === 'ok' && location
           ? <span className="geo-ok">
               📍{' '}{location.name ?? `${location.lat.toFixed(2)}, ${location.lon.toFixed(2)}`}
+              {freshness && <em> · {freshness}</em>}
             </span>
           : status === 'searching'
             ? <span className="geo-msg loading">Suche…</span>
             : status === 'notfound'
               ? <span className="geo-msg warn">Ort nicht gefunden</span>
-              : <span className="geo-msg warn">Standort nicht verfügbar</span>
+              : status === 'error' && freshness
+                ? <span className="geo-msg warn">Aktualisierung fehlgeschlagen <em>· {freshness}</em></span>
+                : <span className="geo-msg warn">Standort nicht verfügbar</span>
       }
       <button
         className="geo-icon"
@@ -1202,19 +1207,16 @@ export default function App() {
     <div className="app">
       <header>
         <h1>Gefühlte Temperatur</h1>
+        {/* Freshness folds into the GeoBar chip (see there) instead of its
+            own row, so the header stays to one compact line. */}
         <GeoBar
           status={geoStatus}
           location={geoLocation}
+          freshness={updatedAt ? agoLabel(updatedAt) : null}
           onRefresh={refresh}
           onSearch={searchWeather}
           onLocate={loadWeather}
         />
-        {/* keep showing staleness even if a later refresh failed — that's when it matters */}
-        {updatedAt && (
-          <p className="freshness" key={nowTick}>
-            {agoLabel(updatedAt)}{geoStatus === 'error' ? ' · Aktualisierung fehlgeschlagen' : ''}
-          </p>
-        )}
       </header>
 
       <nav className="tabs">
