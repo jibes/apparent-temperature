@@ -19,6 +19,23 @@ function nowHourIndex(hours) {
   return Math.max(0, hours.findIndex(h => h.ts + 3600000 > Date.now()))
 }
 
+// How far "now" sits between hours[nowIdx] and the next hour, as a 0–1
+// fraction — the hourly data is only exact on the hour, so anything in
+// between is a linear estimate rather than a real 5-min reading.
+function nowFraction(hours, nowIdx) {
+  const a = hours[nowIdx], b = hours[nowIdx + 1]
+  if (!a || !b) return 0
+  return Math.min(1, Math.max(0, (Date.now() - a.ts) / (b.ts - a.ts)))
+}
+
+// Linear interpolation between two {med,lo,hi} stat points (or null, at the
+// edges of the data where there's nothing to blend with).
+function interpPoint(a, b, t) {
+  if (!a) return b
+  if (!b) return a
+  return { med: a.med + (b.med - a.med) * t, lo: a.lo + (b.lo - a.lo) * t, hi: a.hi + (b.hi - a.hi) * t }
+}
+
 // Relative "updated X ago" label.
 function agoLabel(ms) {
   if (!ms) return null
@@ -476,11 +493,28 @@ function ForecastChart({ hours, lat, lon, active }) {
   })
 
   const nowIdx = nowHourIndex(hours)
+  const nowFrac = nowFraction(hours, nowIdx)
+  const xNow = x(nowIdx) + nowFrac * pxPerHour
   const spanDays = Math.round((n - nowIdx) / 24)
-  const si  = selIdx == null ? nowIdx : Math.min(selIdx, n - 1)
-  const selDate = hours[si].time
+
+  // Selecting nothing (the default) means "now" — an exact, interpolated
+  // position between two hourly samples, not snapped to either one. Tapping
+  // always selects a real (whole-hour) data point instead.
+  const selectingNow = selIdx == null
+  const si    = selectingNow ? nowIdx : Math.min(selIdx, n - 1)
+  const selX  = selectingNow ? xNow : x(si)
+  const selDate = selectingNow ? new Date() : hours[si].time
   const dateStr = `${WEEKDAY[selDate.getDay()]} ${selDate.getDate()}.${selDate.getMonth() + 1}.`
-  const hhmm = `${String(selDate.getHours()).padStart(2, '0')}:00`
+  const hhmm = selectingNow
+    ? `${String(selDate.getHours()).padStart(2, '0')}:${String(selDate.getMinutes()).padStart(2, '0')}`
+    : `${String(selDate.getHours()).padStart(2, '0')}:00`
+
+  // Value at the current selection: the real hourly point when a specific
+  // hour is tapped, or the interpolated "now" estimate by default.
+  function pointAt(s) {
+    if (!selectingNow) return s.points[si]
+    return interpPoint(s.points[nowIdx], s.points[nowIdx + 1], nowFrac)
+  }
 
   function pick(e) {
     const rect = svgRef.current.getBoundingClientRect()
@@ -508,8 +542,8 @@ function ForecastChart({ hours, lat, lon, active }) {
             onPointerMove={e => { if (e.buttons) pick(e) }}
             style={{ touchAction: 'pan-x' }}
           >
-            {nowIdx > 0 && (
-              <rect x={0} y={padT} width={x(nowIdx)} height={innerH} className="fc-past" />
+            {xNow > 0 && (
+              <rect x={0} y={padT} width={xNow} height={innerH} className="fc-past" />
             )}
             {grid.map((g, k) => (
               <line key={k} x1={0} x2={chartW} y1={g.y} y2={g.y} className="fc-grid" />
@@ -532,13 +566,18 @@ function ForecastChart({ hours, lat, lon, active }) {
                 strokeWidth={lineWidth(s.inputs)} strokeDasharray={s.derived ? '' : '4 2.5'} />
             ))}
 
-            <line x1={x(nowIdx)} x2={x(nowIdx)} y1={padT} y2={padT + innerH} className="fc-now" />
-            <text x={x(nowIdx) + 3} y={padT + 9} className="fc-nowlab">Jetzt</text>
+            <line x1={xNow} x2={xNow} y1={padT} y2={padT + innerH} className="fc-now" />
+            <text x={xNow + 3} y={padT + 9} className="fc-nowlab">Jetzt</text>
 
-            <line x1={x(si)} x2={x(si)} y1={padT} y2={padT + innerH} className="fc-cursor" />
-            {series.map(s => s.points[si] && (
-              <circle key={`d${s.key}`} cx={x(si)} cy={ymap(s)(s.points[si].med)} r="3.5" fill={s.color} stroke="var(--bg)" strokeWidth="1.5" />
-            ))}
+            {!selectingNow && (
+              <line x1={selX} x2={selX} y1={padT} y2={padT + innerH} className="fc-cursor" />
+            )}
+            {series.map(s => {
+              const p = pointAt(s); if (!p) return null
+              return (
+                <circle key={`d${s.key}`} cx={selX} cy={ymap(s)(p.med)} r="3.5" fill={s.color} stroke="var(--bg)" strokeWidth="1.5" />
+              )
+            })}
 
             {labels.map(i => (
               <text key={`h${i}`} x={x(i)} y={H - 7} className="fc-hourlab" textAnchor="middle">
@@ -552,7 +591,7 @@ function ForecastChart({ hours, lat, lon, active }) {
             ))}
 
             {series.length === 0 && (
-              <text x={x(nowIdx) + 40} y={padT + innerH / 2} className="fc-empty">
+              <text x={xNow + 40} y={padT + innerH / 2} className="fc-empty">
                 keine Werte gewählt
               </text>
             )}
@@ -564,7 +603,7 @@ function ForecastChart({ hours, lat, lon, active }) {
         <div className="fc-rtime">{dateStr} {hhmm}</div>
         <div className="fc-rgrid">
           {series.map(s => {
-            const p = s.points[si]; if (!p) return null
+            const p = pointAt(s); if (!p) return null
             const f = v => (s.dp ? v.toFixed(s.dp) : String(Math.round(v)))
             return (
               <div key={s.key} className={`fc-rcell ${s.derived ? 'derived' : ''}`}>
@@ -692,8 +731,15 @@ function FeltTab({ outTemp, outRH, hours, wxMeta, lat, lon }) {
 
   const feltDef = DERIVED.find(d => d.felt)
   const nowIdx  = hours && hours.length ? nowHourIndex(hours) : null
+  // Interpolate between this hour and the next so the headline reflects the
+  // exact current moment rather than snapping to whichever hourly sample is
+  // nearest — the hourly data is only exact on the hour.
   const nowPoint = (nowIdx != null && feltDef.show(active))
-    ? feltPoints([hours[nowIdx]], { lat, lon }, active)[0]
+    ? interpPoint(
+        feltPoints([hours[nowIdx]], { lat, lon }, active)[0],
+        hours[nowIdx + 1] ? feltPoints([hours[nowIdx + 1]], { lat, lon }, active)[0] : null,
+        nowFraction(hours, nowIdx)
+      )
     : null
   const ens = ensembleInfo(hours)
 
