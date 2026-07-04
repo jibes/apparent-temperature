@@ -403,22 +403,22 @@ input[type='range'] {
 /* ── Top: single headline "Gefühlt" value, borderless ── */
 .felt-top {
   text-align: center;
-  padding: 0.2rem 0.3rem 1rem;
-  margin-bottom: 0.2rem;
+  padding: 0.1rem 0.3rem 0.6rem;
+  margin-bottom: 0.1rem;
   /* Fixed floor sized for the tallest realistic case (value + category +
      a 2-line hint, e.g. once the Schwüle clause appears) — content that
      varies (fallback vs. full state, Schwüle on/off, wrapping) then just
      centers within this space instead of growing/shrinking it and pushing
      the metric tiles and graph below up and down as it changes. */
-  min-height: 10rem;
+  min-height: 8rem;
   display: flex;
   flex-direction: column;
   justify-content: center;
 }
 .felt-now .ap-val {
-  font-size: 3.6rem;
+  font-size: 2.9rem;
   font-weight: 800;
-  letter-spacing: -2px;
+  letter-spacing: -1.5px;
   line-height: 1;
   font-variant-numeric: tabular-nums;
   color: var(--felt-color, var(--text));
@@ -426,13 +426,13 @@ input[type='range'] {
 .felt-now .ap-cat {
   font-size: 0.95rem;
   font-weight: 700;
-  margin-top: 0.35rem;
+  margin-top: 0.25rem;
   color: var(--felt-color, var(--text));
 }
 .felt-hint {
   font-size: 0.78rem;
   color: var(--muted);
-  margin: 0.5rem 0 0;
+  margin: 0.4rem 0 0;
   line-height: 1.5;
 }
 
