@@ -24,6 +24,12 @@ body {
   margin: 0 auto;
   padding: 1.25rem 0.9rem 4rem;
 }
+/* Wider on desktop — the forecast graph is the main beneficiary: the chart
+   width is measured live (ResizeObserver), so more container width directly
+   means more pixels per hour and a more readable line/band, not just more
+   whitespace around the phone-width layout. */
+@media (min-width: 640px)  { .app { max-width: 640px; } }
+@media (min-width: 900px)  { .app { max-width: 760px; } }
 
 /* ── Top bar: tabs (heading) + location, one sleek box instead of the
    previous alternating boxed/unboxed rows ── */
