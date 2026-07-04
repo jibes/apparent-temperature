@@ -36,6 +36,26 @@ function interpPoint(a, b, t) {
   return { med: a.med + (b.med - a.med) * t, lo: a.lo + (b.lo - a.lo) * t, hi: a.hi + (b.hi - a.hi) * t }
 }
 
+// Interpolated current outdoor reading (temp/humidity/wind/clouds) from the
+// hourly forecast, using the same nowFraction the headline and graph use. This
+// is THE single source for every outdoor value on screen — the Gefühlt-tab
+// air-temp baseline and the Lüften-tab Aussen inputs both read it — so they can
+// never disagree about "now". Returns null when there's no forecast yet.
+function nowReading(hours) {
+  if (!hours || !hours.length) return null
+  const i = nowHourIndex(hours)
+  const a = hours[i], b = hours[i + 1]
+  const frac = nowFraction(hours, i)
+  const lerp = sel => (b ? sel(a) + (sel(b) - sel(a)) * frac : sel(a))
+  const bothClouds = a.clouds != null && (!b || b.clouds != null)
+  return {
+    temp:     lerp(h => h.temp),
+    humidity: lerp(h => h.humidity),
+    wind:     lerp(h => h.wind),
+    clouds:   bothClouds ? lerp(h => h.clouds) : (a.clouds ?? null),
+  }
+}
+
 // Relative "updated X ago" label.
 function agoLabel(ms) {
   if (!ms) return null
@@ -730,24 +750,20 @@ function FeltTab({ outTemp, outRH, hours, wxMeta, lat, lon }) {
   const feltDef = DERIVED.find(d => d.felt)
   const nowIdx  = hours && hours.length ? nowHourIndex(hours) : null
 
-  // Everything "now" on this tab is interpolated between the current hour and
-  // the next (the hourly data is only exact on the hour) so the headline value,
-  // its air-temp baseline, the Schwüle dew point and the graph readout all read
-  // the same moment. The snapped outTemp/outRH state stays for the Lüften tab.
-  const frac = nowIdx != null ? nowFraction(hours, nowIdx) : 0
-  const lerp = sel => {
-    const a = hours[nowIdx], b = hours[nowIdx + 1]
-    return b ? sel(a) + (sel(b) - sel(a)) * frac : sel(a)
-  }
-  const airTemp = nowIdx != null ? lerp(h => h.temp)     : outTemp
-  const airRH   = nowIdx != null ? lerp(h => h.humidity) : outRH
+  // Everything "now" on this tab reads the interpolated current moment (the
+  // hourly data is only exact on the hour) so the headline value, its air-temp
+  // baseline, the Schwüle dew point and the graph readout all agree. Uses the
+  // same nowReading() source as the Lüften tab's Aussen inputs.
+  const nv      = nowReading(hours)
+  const airTemp = nv ? nv.temp     : outTemp
+  const airRH   = nv ? nv.humidity : outRH
   const dp      = dewPoint(airTemp, airRH)
 
   const nowPoint = (nowIdx != null && feltDef.show(active))
     ? interpPoint(
         feltPoints([hours[nowIdx]], { lat, lon }, active)[0],
         hours[nowIdx + 1] ? feltPoints([hours[nowIdx + 1]], { lat, lon }, active)[0] : null,
-        frac
+        nowFraction(hours, nowIdx)
       )
     : null
   const ens = ensembleInfo(hours)
@@ -950,18 +966,19 @@ export default function App() {
     setUpdatedAt(Date.now())
   }
 
-  // Sync outdoor inputs from the hourly forecast's current-hour bucket
-  // whenever a fresh forecast arrives; prefill indoor temp once on first
-  // load so the Lüften tab starts from a sensible baseline (= outdoor temp).
+  // Sync outdoor inputs from the interpolated "now" reading whenever a fresh
+  // forecast arrives (same source as the Gefühlt tab, quantized to the slider
+  // steps), so Lüften's Aussen matches the Gefühlt tab. Prefill indoor temp
+  // once so the Lüften tab starts from a sensible baseline (= outdoor temp).
   useEffect(() => {
-    if (!hours || !hours.length) return
-    const h = hours[nowHourIndex(hours)]
-    setOutTemp(Math.round(h.temp * 2) / 2)
-    setOutRH(Math.round(h.humidity))
-    setWind(Math.round(h.wind))
-    if (h.clouds != null) setClouds(Math.round(h.clouds))
+    const nv = nowReading(hours)
+    if (!nv) return
+    setOutTemp(Math.round(nv.temp * 2) / 2)
+    setOutRH(Math.round(nv.humidity))
+    setWind(Math.round(nv.wind))
+    if (nv.clouds != null) setClouds(Math.round(nv.clouds))
     if (!prefilledRef.current) {
-      setInTemp(Math.round(h.temp * 2) / 2)
+      setInTemp(Math.round(nv.temp * 2) / 2)
       prefilledRef.current = true
     }
   }, [hours])
