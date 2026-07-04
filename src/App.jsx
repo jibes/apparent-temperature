@@ -890,12 +890,21 @@ function fmtSlot(start, end) {
 
 // Ventilation tab (indoor + outdoor: temp + humidity only)
 
-function LueftenTab({ inTemp, setInTemp, inRH, setInRH, outTemp, setOutTemp, outRH, setOutRH, hours, graphPoint }) {
+function LueftenTab({
+  inTemp, setInTemp, inRH, setInRH, outTemp, setOutTemp, outRH, setOutRH,
+  setOutManual, outManual, onResetOutdoor, hours, graphPoint,
+}) {
   const verdict   = ventVerdict(inTemp, inRH, outTemp, outRH)
   const feltIn    = indoorApparentTemp(inTemp, inRH).value
   const feltOut   = indoorApparentTemp(outTemp, outRH).value
   const win       = bestVentWindow(hours, inTemp, inRH)
   const comfyNow  = comfortPenalty(inTemp, inRH) < 0.5
+
+  // Any direct edit to the outdoor sliders (or importing a graph point) is a
+  // deliberate override — mark it so the auto-sync from live data stops
+  // clobbering it, and the "back to live" button below appears.
+  const setOutTempManual = v => { setOutTemp(v); setOutManual(true) }
+  const setOutRHManual   = v => { setOutRH(v);   setOutManual(true) }
 
   // Pull the temp/humidity of the point currently selected in the Gefühlt-tab
   // graph (or "now") into the outdoor sliders, so a forecast hour can be
@@ -904,7 +913,7 @@ function LueftenTab({ inTemp, setInTemp, inRH, setInRH, outTemp, setOutTemp, out
   const gpTemp = graphPoint && Math.round(graphPoint.temp * 2) / 2
   const gpRH   = graphPoint && Math.round(graphPoint.humidity)
   const canImport = graphPoint && (gpTemp !== outTemp || gpRH !== outRH)
-  const importGraph = () => { setOutTemp(gpTemp); setOutRH(gpRH) }
+  const importGraph = () => { setOutTempManual(gpTemp); setOutRHManual(gpRH) }
 
   return (
     <>
@@ -933,13 +942,18 @@ function LueftenTab({ inTemp, setInTemp, inRH, setInRH, outTemp, setOutTemp, out
           </span>
         </summary>
         <div className="section-body">
+          {outManual && (
+            <button type="button" className="graph-import" onClick={onResetOutdoor}>
+              ↺ Zurück zu Live-Daten
+            </button>
+          )}
           {canImport && (
             <button type="button" className="graph-import" onClick={importGraph}>
               ⟳ Graphpunkt übernehmen ({graphPoint.label}: {fmt1(graphPoint.temp)} °C · {gpRH} %)
             </button>
           )}
-          <Slider label="Temperatur"       value={outTemp} onChange={setOutTemp} min={-30} max={50}  step={0.5} unit="°C" />
-          <Slider label="Luftfeuchtigkeit" value={outRH}   onChange={setOutRH}   min={0}   max={100} step={1}   unit="%" />
+          <Slider label="Temperatur"       value={outTemp} onChange={setOutTempManual} min={-30} max={50}  step={0.5} unit="°C" />
+          <Slider label="Luftfeuchtigkeit" value={outRH}   onChange={setOutRHManual}   min={0}   max={100} step={1}   unit="%" />
         </div>
       </details>
 
@@ -985,6 +999,10 @@ export default function App() {
   const [outRH,   setOutRH]   = usePersistentState('outRH', 65)
   const [inTemp,  setInTemp]  = usePersistentState('inTemp', 24)
   const [inRH,    setInRH]    = usePersistentState('inRH', 55)
+  // Once the user edits the Lüften Aussen sliders directly, stop silently
+  // overwriting them on every refetch — they're deliberately exploring a
+  // "what if" scenario. resetOutdoorToLive() is the explicit way back.
+  const [outManual, setOutManual] = usePersistentState('outManual', false)
 
   const [geoStatus,   setGeoStatus]   = useState('idle')
   const [geoLocation, setGeoLocation] = usePersistentState('geoLocation', null)
@@ -1014,18 +1032,30 @@ export default function App() {
 
   // Sync outdoor inputs from the interpolated "now" reading whenever a fresh
   // forecast arrives (same source as the Gefühlt tab, quantized to the slider
-  // steps), so Lüften's Aussen matches the Gefühlt tab. Prefill indoor temp
-  // once so the Lüften tab starts from a sensible baseline (= outdoor temp).
+  // steps), so Lüften's Aussen matches the Gefühlt tab — but only while the
+  // user hasn't overridden them by hand (see outManual above). Prefill indoor
+  // temp once so the Lüften tab starts from a sensible baseline (= outdoor temp).
   useEffect(() => {
     const nv = nowReading(hours)
     if (!nv) return
-    setOutTemp(Math.round(nv.temp * 2) / 2)
-    setOutRH(Math.round(nv.humidity))
+    if (!outManual) {
+      setOutTemp(Math.round(nv.temp * 2) / 2)
+      setOutRH(Math.round(nv.humidity))
+    }
     if (!prefilledRef.current) {
       setInTemp(Math.round(nv.temp * 2) / 2)
       prefilledRef.current = true
     }
-  }, [hours])
+  }, [hours, outManual])
+
+  // Explicit way back to live data after outManual has diverged from it.
+  function resetOutdoorToLive() {
+    const nv = nowReading(hours)
+    if (!nv) return
+    setOutTemp(Math.round(nv.temp * 2) / 2)
+    setOutRH(Math.round(nv.humidity))
+    setOutManual(false)
+  }
 
   async function loadWeather() {
     if (!navigator.geolocation) { setGeoStatus('denied'); return }
@@ -1199,6 +1229,9 @@ export default function App() {
             inRH={inRH}       setInRH={setInRH}
             outTemp={outTemp} setOutTemp={setOutTemp}
             outRH={outRH}     setOutRH={setOutRH}
+            setOutManual={setOutManual}
+            outManual={outManual}
+            onResetOutdoor={resetOutdoorToLive}
             hours={geoStatus === 'ok' ? hours : null}
             graphPoint={graphPoint}
           />
