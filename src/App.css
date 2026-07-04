@@ -449,13 +449,56 @@ input[type='range'] {
   background: var(--muted);
   flex-shrink: 0;
 }
+/* One row, no wrapping — circle icon + short caption per metric, color-coded
+   via the circle (an emoji can't be recolored, so the ring/fill carries it). */
 .fc-metrics {
   display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 0.3rem;
+  justify-content: space-between;
+  gap: 0.2rem;
   margin-bottom: 0.8rem;
 }
+.fc-metric {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.28rem;
+  background: none;
+  border: none;
+  padding: 0.15rem 0;
+  cursor: pointer;
+}
+.fc-metric-circle {
+  width: 2.3rem;
+  height: 2.3rem;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.05rem;
+  line-height: 1;
+  border: 1.5px solid color-mix(in srgb, var(--metric-color) 45%, transparent);
+  background: transparent;
+  opacity: 0.7;
+  transition: background 0.15s, border-color 0.15s, opacity 0.15s;
+}
+.fc-metric.active .fc-metric-circle {
+  background: color-mix(in srgb, var(--metric-color) 24%, transparent);
+  border-color: var(--metric-color);
+  opacity: 1;
+}
+.fc-metric-label {
+  font-size: 0.62rem;
+  font-weight: 600;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+.fc-metric.active .fc-metric-label { color: var(--text); }
+
 .mdot {
   display: inline-block;
   width: 0.45rem;

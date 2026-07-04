@@ -325,12 +325,14 @@ function clearSkyAt(h, ctx) {
 // lines, no hardcoded shade/sun pair — "Gefühlt" is one line that composes
 // whatever bases are on. `val(s)` reads a model sample; `hourVal(h,ctx)` is a
 // deterministic per-hour value (no ensemble spread). `dp` = readout decimals.
+// `short`/`icon` are for the compact single-row toggle (MetricToggles);
+// `label` stays the full name used everywhere else (graph readout, etc.).
 const BASES = [
-  { key: 'temp',   label: 'Lufttemp.',    unit: '°C',   color: '#fb923c', dp: 0, val: s => s.t },
-  { key: 'ah',     label: 'Abs. Feuchte', unit: 'g/m³', color: '#22d3ee', dp: 1, val: s => absoluteHumidity(s.t, s.rh) },
-  { key: 'wind',   label: 'Wind',         unit: 'km/h', color: '#94a3b8', dp: 0, val: s => s.w },
-  { key: 'csun',   label: 'Sonne (klar)', unit: 'W/m²', color: '#fbbf24', dp: 0, hourVal: clearSkyAt },
-  { key: 'clouds', label: 'Bewölkung',    unit: '%',    color: '#cbd5e1', dp: 0, val: s => s.c },
+  { key: 'temp',   label: 'Lufttemp.',    short: 'Temp.',   icon: '🌡️', unit: '°C',   color: '#fb923c', dp: 0, val: s => s.t },
+  { key: 'ah',     label: 'Abs. Feuchte', short: 'Feuchte', icon: '💧', unit: 'g/m³', color: '#22d3ee', dp: 1, val: s => absoluteHumidity(s.t, s.rh) },
+  { key: 'wind',   label: 'Wind',         short: 'Wind',    icon: '💨', unit: 'km/h', color: '#94a3b8', dp: 0, val: s => s.w },
+  { key: 'csun',   label: 'Sonne (klar)', short: 'Sonne',   icon: '☀️', unit: 'W/m²', color: '#fbbf24', dp: 0, hourVal: clearSkyAt },
+  { key: 'clouds', label: 'Bewölkung',    short: 'Wolken',  icon: '☁️', unit: '%',    color: '#cbd5e1', dp: 0, val: s => s.c },
 ]
 
 // `deps` = base keys that must all be active for the derived line to appear.
@@ -803,11 +805,14 @@ function MetricToggles({ active, onToggle }) {
         <button
           key={b.key}
           type="button"
-          className={`preset-btn ${active[b.key] ? 'active' : ''}`}
+          className={`fc-metric ${active[b.key] ? 'active' : ''}`}
           onClick={() => onToggle(b.key)}
+          style={{ '--metric-color': b.color }}
+          aria-pressed={active[b.key]}
+          title={b.label}
         >
-          <i className="mdot" style={{ background: b.color }} />
-          {b.label}
+          <span className="fc-metric-circle">{b.icon}</span>
+          <span className="fc-metric-label">{b.short}</span>
         </button>
       ))}
     </div>
