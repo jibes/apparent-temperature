@@ -664,7 +664,7 @@ function ForecastChart({ hours, lat, lon, active, selTs, setSelTs, visible }) {
                 edge) instead of a separate reserved column — a halo via
                 stroke keeps them legible over whatever line/band is there. */}
             {single && grid.map((g, k) => g.label != null && (
-              <text key={`yl${k}`} x={6} y={g.y - 3} className="fc-ylab-inside">{g.label}</text>
+              <text key={`yl${k}`} x={6} y={g.y} dominantBaseline="middle" className="fc-ylab-inside">{g.label}</text>
             ))}
             {minor.map(i => (
               <line key={`mn${i}`} x1={x(i)} x2={x(i)} y1={padT} y2={padT + innerH} className="fc-gridminor" />
