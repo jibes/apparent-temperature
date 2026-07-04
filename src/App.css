@@ -11,13 +11,33 @@
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
+html {
+  /* Reserve the vertical scrollbar's width up front so switching between the
+     Gefühlt and Lüften tabs (very different content heights) never shifts
+     the layout sideways when one needs to scroll and the other doesn't —
+     but the track/thumb itself still only renders when there's actually
+     something to scroll, it's not a permanently-visible empty gutter. */
+  scrollbar-gutter: stable;
+}
+
 body {
   font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
   background: var(--bg);
   color: var(--text);
   min-height: 100vh;
   font-size: 15px;
+  /* Same themed scrollbar as the forecast chart's horizontal one, so desktop
+     doesn't show a mismatched default light-gray bar next to it. */
+  scrollbar-width: auto;
+  scrollbar-color: var(--muted) var(--bg);
 }
+body::-webkit-scrollbar { width: 8px; }
+body::-webkit-scrollbar-track { background: var(--bg); }
+body::-webkit-scrollbar-thumb {
+  background: var(--muted);
+  border-radius: 999px;
+}
+body::-webkit-scrollbar-thumb:hover { background: var(--accent); }
 
 .app {
   max-width: 480px;
