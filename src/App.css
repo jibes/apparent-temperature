@@ -417,10 +417,32 @@ input[type='range'] {
 }
 .forecast-head {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
   padding-right: 0.4rem;
   margin-bottom: 0.5rem;
+}
+.fc-now-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.32rem;
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 0.2rem 0.6rem;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+}
+.fc-now-btn:hover { color: #86efac; border-color: #166534; }
+.fc-now-dot {
+  width: 0.4rem;
+  height: 0.4rem;
+  border-radius: 50%;
+  background: #86efac;
+  flex-shrink: 0;
 }
 .fc-metrics {
   display: flex;

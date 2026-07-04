@@ -604,10 +604,24 @@ function ForecastChart({ hours, lat, lon, active, selTs, setSelTs, visible }) {
     if (dragging) setDragging(false)
   }
 
+  // Reset the selection to live mode and scroll "now" into view (with a
+  // little breathing room on the left, not flush against the edge).
+  function jumpToNow() {
+    setSelTs(null)
+    if (scrollRef.current) {
+      const target = Math.max(0, xNow - 40)
+      scrollRef.current.scrollLeft = target
+      scrollPos.current = target
+    }
+  }
+
   return (
     <div className="forecast" ref={wrapRef}>
       <div className="forecast-head">
         <span className="section-name muted">{spanDays}-Tage-Vorschau</span>
+        <button type="button" className="fc-now-btn" onClick={jumpToNow} title="Zu jetzt springen" aria-label="Zu jetzt springen">
+          <i className="fc-now-dot" /> Jetzt
+        </button>
       </div>
 
       <div className="fc-plot">
