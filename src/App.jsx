@@ -436,7 +436,7 @@ function lineWidth(inputs) {
 // Multi-day forecast chart. BASE inputs are toggled from the shared selector
 // above (same `active` state that drives the current-value readout); DERIVED
 // outputs appear when their inputs are active. Same units share one scale.
-function ForecastChart({ hours, lat, lon, active, selIdx, setSelIdx, visible }) {
+function ForecastChart({ hours, lat, lon, active, selTs, setSelTs, visible }) {
   const wrapRef = useRef()
   const svgRef = useRef()
   const scrollRef = useRef()
@@ -530,9 +530,14 @@ function ForecastChart({ hours, lat, lon, active, selIdx, setSelIdx, visible }) 
 
   // Selecting nothing (the default) means "now" — an exact, interpolated
   // position between two hourly samples, not snapped to either one. Tapping
-  // always selects a real (whole-hour) data point instead.
-  const selectingNow = selIdx == null
-  const si    = selectingNow ? nowIdx : Math.min(selIdx, n - 1)
+  // always selects a real (whole-hour) data point instead. The selection is
+  // anchored to that hour's timestamp, not its array index: the hourly
+  // window slides forward with every refetch, so an index could otherwise
+  // silently point at a different hour (or vanish) later — in which case we
+  // fall back to "now" rather than show a stale/wrong point.
+  const selHourIdx = selTs != null ? hours.findIndex(h => h.ts === selTs) : -1
+  const selectingNow = selHourIdx === -1
+  const si    = selectingNow ? nowIdx : selHourIdx
   const selX  = selectingNow ? xNow : x(si)
   const selDate = selectingNow ? new Date() : hours[si].time
   const dateStr = `${WEEKDAY[selDate.getDay()]} ${selDate.getDate()}.${selDate.getMonth() + 1}.`
@@ -550,7 +555,8 @@ function ForecastChart({ hours, lat, lon, active, selIdx, setSelIdx, visible }) 
   function pick(e) {
     const rect = svgRef.current.getBoundingClientRect()
     let idx = Math.round((e.clientX - rect.left - 4) / pxPerHour)
-    setSelIdx(Math.max(0, Math.min(n - 1, idx)))
+    idx = Math.max(0, Math.min(n - 1, idx))
+    setSelTs(hours[idx].ts)
   }
 
   return (
@@ -757,7 +763,7 @@ function FeltNow({ point, airTemp, dp }) {
   )
 }
 
-function FeltTab({ outTemp, outRH, hours, wxMeta, lat, lon, selIdx, setSelIdx, visible }) {
+function FeltTab({ outTemp, outRH, hours, wxMeta, lat, lon, selTs, setSelTs, visible }) {
   const [active, setActive] = useState({ temp: true, ah: true, wind: true, csun: true, clouds: true })
   const toggle = key => setActive(a => ({ ...a, [key]: !a[key] }))
 
@@ -792,7 +798,7 @@ function FeltTab({ outTemp, outRH, hours, wxMeta, lat, lon, selIdx, setSelIdx, v
       <MetricToggles active={active} onToggle={toggle} />
 
       <ForecastChart hours={hours} lat={lat} lon={lon} active={active}
-        selIdx={selIdx} setSelIdx={setSelIdx} visible={visible} />
+        selTs={selTs} setSelTs={setSelTs} visible={visible} />
 
       <details className="section-card formula-card">
         <summary className="section-summary">
@@ -970,7 +976,6 @@ export default function App() {
 
   const [outTemp, setOutTemp] = usePersistentState('outTemp', 28)
   const [outRH,   setOutRH]   = usePersistentState('outRH', 65)
-  const [wind,    setWind]    = usePersistentState('wind', 12)
   const [inTemp,  setInTemp]  = usePersistentState('inTemp', 24)
   const [inRH,    setInRH]    = usePersistentState('inRH', 55)
 
@@ -978,17 +983,20 @@ export default function App() {
   const [geoLocation, setGeoLocation] = usePersistentState('geoLocation', null)
   const [locSource,   setLocSource]   = usePersistentState('locSource', 'gps') // 'gps' | 'search'
   const [hours,       setHours]       = useState(null)
-  const [selIdx,      setSelIdx]      = useState(null) // graph selection (null → "now"), lifted so both tabs share it
+  // Graph selection, lifted so both tabs share it. Anchored to the selected
+  // hour's timestamp (not its array index!) — hours is a sliding window that
+  // shifts forward with every refetch, so an index can silently point at a
+  // different hour (or vanish) once the window moves. null → "now".
+  const [selTs,       setSelTs]       = useState(null)
   const [wxMeta,      setWxMeta]      = useState(null) // { sources, spread }
-  const [clouds,      setClouds]      = useState(null) // current cloud cover %
   const [updatedAt,   setUpdatedAt]   = useState(null) // ms of last successful fetch
   const [nowTick,     setNowTick]     = useState(0)    // forces the freshness label to refresh
 
   // The `current` endpoint only feeds methodology metadata (member count,
-  // spread, grid cell) here — the actual outdoor temp/RH/wind/clouds used
-  // everywhere (headline, graph, Lüften tab) come from the hourly forecast's
-  // "now" bucket instead (effect below), so there is exactly one definition
-  // of "the current outdoor reading" instead of two independent fetches that
+  // spread, grid cell) here — the actual outdoor temp/RH used everywhere
+  // (headline, graph, Lüften tab) come from the hourly forecast's "now"
+  // bucket instead (effect below), so there is exactly one definition of
+  // "the current outdoor reading" instead of two independent fetches that
   // can disagree (they hit the same models but current vs. hourly aggregation
   // differ, which showed up as a real gap e.g. in humidity).
   const prefilledRef = useRef(false)
@@ -1006,8 +1014,6 @@ export default function App() {
     if (!nv) return
     setOutTemp(Math.round(nv.temp * 2) / 2)
     setOutRH(Math.round(nv.humidity))
-    setWind(Math.round(nv.wind))
-    if (nv.clouds != null) setClouds(Math.round(nv.clouds))
     if (!prefilledRef.current) {
       setInTemp(Math.round(nv.temp * 2) / 2)
       prefilledRef.current = true
@@ -1119,14 +1125,15 @@ export default function App() {
   }, [updatedAt, locSource, geoLocation])
 
   // Temp/humidity of the point currently selected in the graph (or the
-  // interpolated "now" when nothing is tapped), for the Lüften import button.
+  // interpolated "now" when nothing is tapped, or the selection has aged out
+  // of the hourly window), for the Lüften import button.
   const graphPoint = (() => {
     if (geoStatus !== 'ok' || !hours || !hours.length) return null
-    if (selIdx == null) {
+    const h = selTs != null ? hours.find(h => h.ts === selTs) : null
+    if (!h) {
       const nv = nowReading(hours)
       return nv && { temp: nv.temp, humidity: nv.humidity, label: 'jetzt' }
     }
-    const h = hours[Math.min(selIdx, hours.length - 1)]
     return {
       temp: h.temp, humidity: h.humidity,
       label: `${WEEKDAY[h.time.getDay()]} ${String(h.time.getHours()).padStart(2, '0')}:00`,
@@ -1174,8 +1181,8 @@ export default function App() {
             wxMeta={geoStatus === 'ok' ? wxMeta : null}
             lat={geoLocation?.lat ?? 50}
             lon={geoLocation?.lon ?? 10}
-            selIdx={selIdx}
-            setSelIdx={setSelIdx}
+            selTs={selTs}
+            setSelTs={setSelTs}
             visible={tab === 'felt'}
           />
         </div>

@@ -480,22 +480,6 @@ input[type='range'] {
   padding-right: 0.4rem;
   margin-bottom: 0.5rem;
 }
-.forecast-legend {
-  font-size: 0.66rem;
-  color: var(--muted);
-  display: inline-flex;
-  align-items: center;
-  gap: 0.25rem;
-}
-.forecast-legend .lg {
-  width: 0.7rem;
-  height: 0.7rem;
-  border-radius: 2px;
-  display: inline-block;
-}
-.forecast-legend .lg.sun   { background: #fbbf24; }
-.forecast-legend .lg.shade { background: #7dd3fc; }
-
 .fc-metrics {
   display: flex;
   flex-wrap: wrap;
@@ -589,7 +573,6 @@ input[type='range'] {
 .fc-rvalue { font-weight: 700; font-variant-numeric: tabular-nums; }
 .fc-rrange { font-size: 0.72rem; color: var(--muted); font-variant-numeric: tabular-nums; }
 .fc-rcell:not(.derived) .fc-rvalue { font-weight: 600; opacity: 0.85; } /* base inputs, dimmer than results */
-.fc-band { stroke: none; }
 .forecast-note {
   font-size: 0.66rem;
   color: var(--muted);
