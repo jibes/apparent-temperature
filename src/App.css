@@ -545,15 +545,18 @@ input[type='range'] {
 .mdot + .mdot { margin-left: -0.15rem; }
 .fc-plot { display: flex; align-items: stretch; position: relative; }
 .fc-axis { flex: 0 0 auto; display: block; }
-/* Pinned to the plot's left edge, on top of (not inside) the scrollable
+/* Pinned to the plot's edge(s), on top of (not inside) the scrollable
    content — labels stay put as the chart scrolls under them instead of
-   scrolling away, without reserving a separate widening column. */
+   scrolling away, without reserving a separate widening column. Two units
+   active get one on each edge (left = whichever's toggle button is more to
+   the left), matching the button that controls it. */
 .fc-ylabs {
   position: absolute;
-  left: 6px;
   top: 0;
   pointer-events: none;
 }
+.fc-ylabs-left  { left: 6px; }
+.fc-ylabs-right { right: 6px; }
 .fc-scroll {
   flex: 1 1 auto;
   min-width: 0;

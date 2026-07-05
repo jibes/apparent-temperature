@@ -515,15 +515,40 @@ function ForecastChart({ hours, lat, lon, active, selTs, setSelTs, visible }) {
     return `${up}${dn}Z`
   }
 
-  // Horizontal gridlines: labelled ticks when all series share one unit (one
-  // scale), else evenly-spaced unlabelled references (units would differ).
-  const grid = []
-  if (single) {
-    const s = series[0], yf = ymap(s)
-    for (let v = s.yMin; v <= s.yMax + 1e-9; v += s.step) grid.push({ y: yf(v), label: s.step < 1 ? v.toFixed(1) : String(Math.round(v)) })
-  } else {
-    for (let f = 0; f <= 4; f++) grid.push({ y: padT + (f / 4) * innerH, label: null })
+  // Tick marks (position + label) for one series' own scale.
+  const axisTicks = s => {
+    const yf = ymap(s)
+    const out = []
+    for (let v = s.yMin; v <= s.yMax + 1e-9; v += s.step) {
+      out.push({ y: yf(v), label: s.step < 1 ? v.toFixed(1) : String(Math.round(v)) })
+    }
+    return out
   }
+
+  // With exactly two units, show both scales — the one whose leftmost active
+  // toggle button comes first (BASES order) on the left edge, the other on
+  // the right, so the side a scale appears on matches the button that
+  // controls it reading left-to-right.
+  const dualUnits = units.length === 2
+  const activeBaseIndex = unit => {
+    let min = Infinity
+    BASES.forEach((b, i) => { if (active[b.key] && b.unit === unit && i < min) min = i })
+    return min
+  }
+  const [leftUnit, rightUnit] = dualUnits
+    ? [...units].sort((a, b) => activeBaseIndex(a) - activeBaseIndex(b))
+    : [null, null]
+  const leftSeries  = dualUnits ? series.find(s => s.unit === leftUnit)  : null
+  const rightSeries = dualUnits ? series.find(s => s.unit === rightUnit) : null
+
+  // Horizontal gridlines: labelled ticks off the single shared scale, or off
+  // the left-hand scale when there are two, else evenly-spaced unlabelled
+  // references (3+ units can't share meaningful gridlines).
+  const grid = single
+    ? axisTicks(series[0])
+    : dualUnits
+      ? axisTicks(leftSeries).map(g => ({ y: g.y, label: null }))
+      : Array.from({ length: 5 }, (_, f) => ({ y: padT + (f / 4) * innerH, label: null }))
 
   // Gridline density adapts to how wide an hour is on screen.
   const minorStep = pxPerHour >= 11 ? 1 : pxPerHour >= 6 ? 3 : 6
@@ -709,15 +734,29 @@ function ForecastChart({ hours, lat, lon, active, selTs, setSelTs, visible }) {
             )}
           </svg>
         </div>
-        {/* Anchored to the plot's own left edge, not the scrollable content —
+        {/* Anchored to the plot's own edges, not the scrollable content —
             overlaying on top rather than scrolling away with it, and without
             reserving a separate widening column next to the graph. */}
         {single && (
-          <svg className="fc-ylabs" width="34" height={H} viewBox={`0 0 34 ${H}`} aria-hidden="true">
+          <svg className="fc-ylabs fc-ylabs-left" width="34" height={H} viewBox={`0 0 34 ${H}`} aria-hidden="true">
             {grid.map((g, k) => g.label != null && (
               <text key={`yl${k}`} x={4} y={g.y} dominantBaseline="middle" className="fc-ylab-inside">{g.label}</text>
             ))}
           </svg>
+        )}
+        {dualUnits && (
+          <>
+            <svg className="fc-ylabs fc-ylabs-left" width="34" height={H} viewBox={`0 0 34 ${H}`} aria-hidden="true">
+              {axisTicks(leftSeries).map((g, k) => (
+                <text key={`yll${k}`} x={4} y={g.y} dominantBaseline="middle" className="fc-ylab-inside" style={{ fill: leftSeries.color }}>{g.label}</text>
+              ))}
+            </svg>
+            <svg className="fc-ylabs fc-ylabs-right" width="34" height={H} viewBox={`0 0 34 ${H}`} aria-hidden="true">
+              {axisTicks(rightSeries).map((g, k) => (
+                <text key={`ylr${k}`} x={30} y={g.y} dominantBaseline="middle" textAnchor="end" className="fc-ylab-inside" style={{ fill: rightSeries.color }}>{g.label}</text>
+              ))}
+            </svg>
+          </>
         )}
       </div>
 
