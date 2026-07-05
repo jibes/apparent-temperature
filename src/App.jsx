@@ -448,9 +448,28 @@ function ForecastChart({ hours, lat, lon, active, selTs, setSelTs, visible }) {
   const svgRef = useRef()
   const scrollRef = useRef()
   const scrollPos = useRef(0)
+  const scrollRaf = useRef(null)
   const drag = useRef({ active: false, moved: false, startX: 0, startScrollLeft: 0, pointerType: 'mouse' })
   const [dragging, setDragging] = useState(false)
+  const [, setScrollTick] = useState(0) // forces a re-render so bubbles reposition as this scrolls
   const [w, setW] = useState(360)
+  useEffect(() => () => { if (scrollRaf.current) cancelAnimationFrame(scrollRaf.current) }, [])
+
+  // Desktop mouse-drag panning re-renders anyway (via `dragging` toggling),
+  // which is what made bubbles reposition there — but native touch/trackpad
+  // scrolling never touches React state at all, so on a phone the scroll
+  // position ref updated but nothing ever re-rendered to pick it up. rAF-
+  // throttled so a fast swipe doesn't spam re-renders (series/paths are
+  // memoized on hours/active, not scroll, so these re-renders are cheap —
+  // only the bubble/label JSX actually redoes work).
+  function onChartScroll(e) {
+    scrollPos.current = e.currentTarget.scrollLeft
+    if (scrollRaf.current) return
+    scrollRaf.current = requestAnimationFrame(() => {
+      scrollRaf.current = null
+      setScrollTick(t => t + 1)
+    })
+  }
   useEffect(() => {
     if (!wrapRef.current) return
     // Ignore the 0-width report when the tab is hidden (display:none) so the
@@ -721,7 +740,7 @@ function ForecastChart({ hours, lat, lon, active, selTs, setSelTs, visible }) {
         <div
           className="fc-scroll"
           ref={scrollRef}
-          onScroll={e => { scrollPos.current = e.currentTarget.scrollLeft }}
+          onScroll={onChartScroll}
         >
           <svg
             ref={svgRef}
