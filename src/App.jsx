@@ -457,6 +457,7 @@ function ForecastChart({ hours, lat, lon, active, selTs, setSelTs, visible }) {
   const [, setRenderTick] = useState(0) // forces a re-render: scroll (bubbles) and the 5s live-mode tick (below) share it
   const [w, setW] = useState(360)
   const [showSpread, setShowSpread] = useState(false)
+  const [isolated, setIsolated] = useState(null) // legend key, or null = show all at full strength
   useEffect(() => () => { if (scrollRaf.current) cancelAnimationFrame(scrollRaf.current) }, [])
 
   // Desktop mouse-drag panning re-renders anyway (via `dragging` toggling),
@@ -524,6 +525,28 @@ function ForecastChart({ hours, lat, lon, active, selTs, setSelTs, visible }) {
   }, [hours, activeKey, lat, lon])
 
   if (!series) return null
+
+  // Groups each derived value under its base (rh->ah, effsun->csun, felt->temp)
+  // for the legend's 2-column layout and the tap-to-isolate highlight below.
+  const legendGroups = (() => {
+    const bases = series.filter(s => !s.derived)
+    const deriveds = series.filter(s => s.derived)
+    const groups = bases.map(b => ({ base: b, children: deriveds.filter(d => d.primary === b.key) }))
+    const orphans = deriveds.filter(d => !bases.some(b => b.key === d.primary))
+    if (orphans.length) groups.push({ base: null, children: orphans })
+    return groups
+  })()
+
+  // Clicking a legend row isolates its whole group (base + derived siblings)
+  // — dims every other line/bubble so you can focus on just that metric
+  // (and what it feeds into) without losing any of the others' toggles.
+  const isolatedGroup = isolated != null
+    ? legendGroups.find(g => g.base?.key === isolated || g.children.some(c => c.key === isolated))
+    : null
+  const highlightKeys = isolatedGroup
+    ? new Set([isolatedGroup.base?.key, ...isolatedGroup.children.map(c => c.key)].filter(Boolean))
+    : null
+  const dimmed = s => highlightKeys != null && !highlightKeys.has(s.key)
 
   const H = 260, padT = 10, padB = 24, padR = 10
   const units = [...new Set(series.map(s => s.unit))]
@@ -689,7 +712,11 @@ function ForecastChart({ hours, lat, lon, active, selTs, setSelTs, visible }) {
   function layoutBubbles() {
     const viewLeft = scrollRef.current ? scrollRef.current.scrollLeft : 0
     const viewRight = viewLeft + (scrollRef.current ? scrollRef.current.clientWidth : chartW)
+    // While a group is isolated, bubbles for everything else are dropped
+    // entirely (not just dimmed) — the whole point is decluttering the busy
+    // spots, and a faint unreadable bubble is worse than no bubble.
     const items = series.map(s => {
+      if (dimmed(s)) return null
       const p = pointAt(s); if (!p) return null
       const f = v => (s.dp ? v.toFixed(s.dp) : String(Math.round(v)))
       const text = `${f(p.med)} ${s.unit}`
@@ -841,11 +868,13 @@ function ForecastChart({ hours, lat, lon, active, selTs, setSelTs, visible }) {
             ))}
 
             {showSpread && series.map(s => (
-              <path key={`b${s.key}`} d={bandPath(s.points, ymap(s))} fill={s.color} opacity="0.13" stroke="none" />
+              <path key={`b${s.key}`} d={bandPath(s.points, ymap(s))} fill={s.color}
+                opacity={dimmed(s) ? 0.04 : 0.13} stroke="none" />
             ))}
             {series.map(s => (
               <path key={`l${s.key}`} d={linePath(s.points, ymap(s))} fill="none" stroke={s.color}
-                strokeWidth={lineWidth(s.inputs)} strokeDasharray={s.derived ? '' : '4 2.5'} />
+                strokeWidth={lineWidth(s.inputs)} strokeDasharray={s.derived ? '' : '4 2.5'}
+                opacity={dimmed(s) ? 0.15 : 1} style={{ transition: 'opacity 0.15s' }} />
             ))}
 
             <line x1={xNow} x2={xNow} y1={padT} y2={padT + innerH} className={`fc-now ${selectingNow ? 'live' : ''}`} />
@@ -924,24 +953,21 @@ function ForecastChart({ hours, lat, lon, active, selTs, setSelTs, visible }) {
       {/* Legend, kept alongside the in-graph bubbles — one compact row per
           metric, laid out in 2 columns (column-flow, so a base + its derived
           rows below it stay together as a group via break-inside: avoid
-          rather than splitting across columns). Each derived row is indented
-          with a left border in its base's color so the dependency reads at
-          a glance instead of relying on the "→" prefix alone. */}
+          rather than splitting across columns). Derived rows sit in a
+          bracket — one continuous connecting line down the group, not a
+          border per row — so the dependency reads as one shape rather than
+          a stray dash next to each child. Clicking a row isolates its group,
+          dimming everything else so you can focus on one metric at a time. */}
       <div className="fc-readout">
         <div className="fc-rtime">{dateStr} {hhmm}</div>
         <div className="fc-rlist">
-          {(() => {
-            const bases = series.filter(s => !s.derived)
-            const deriveds = series.filter(s => s.derived)
-            const groups = bases.map(b => ({ base: b, children: deriveds.filter(d => d.primary === b.key) }))
-            const orphans = deriveds.filter(d => !bases.some(b => b.key === d.primary))
-            if (orphans.length) groups.push({ base: null, children: orphans })
-            const row = (s, indented) => {
+          {legendGroups.map((g, gi) => {
+            const row = s => {
               const p = pointAt(s); if (!p) return null
               const f = v => (s.dp ? v.toFixed(s.dp) : String(Math.round(v)))
               return (
-                <div key={s.key} className={`fc-rrow ${indented ? 'fc-rrow-child' : ''}`}
-                  style={indented ? { borderLeftColor: s.color } : undefined}>
+                <div key={s.key} className={`fc-rrow ${dimmed(s) ? 'fc-rrow-dim' : ''}`}
+                  onClick={() => setIsolated(v => (v === s.key ? null : s.key))}>
                   <i className="mdot" style={{ background: s.color }} />
                   <span className="fc-rrow-label">{s.label}</span>
                   {showSpread && <span className="fc-rrow-range">{f(p.lo)}–{f(p.hi)}</span>}
@@ -949,13 +975,17 @@ function ForecastChart({ hours, lat, lon, active, selTs, setSelTs, visible }) {
                 </div>
               )
             }
-            return groups.map((g, gi) => (
+            return (
               <div key={g.base ? g.base.key : `orphans${gi}`} className="fc-rgroup">
-                {g.base && row(g.base, false)}
-                {g.children.map(d => row(d, true))}
+                {g.base && row(g.base)}
+                {g.children.length > 0 && (
+                  <div className="fc-rgroup-children" style={{ borderLeftColor: g.base ? g.base.color : g.children[0].color }}>
+                    {g.children.map(d => row(d))}
+                  </div>
+                )}
               </div>
-            ))
-          })()}
+            )
+          })}
         </div>
       </div>
 

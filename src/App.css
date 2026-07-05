@@ -671,17 +671,25 @@ input[type='range'] {
   align-items: center;
   gap: 0.35rem;
   break-inside: avoid-column;
+  cursor: pointer;
+  border-radius: 5px;
+  padding: 0.05rem 0.2rem;
+  margin: 0 -0.2rem;
+  transition: background 0.15s, opacity 0.15s;
 }
-.fc-rrow + .fc-rrow { margin-top: 0.15rem; }
-.fc-rrow-child {
-  /* Indented, with a left border tinted in the *base's* color (this row's
-     own color is usually a close tint already) so the dependency on the
-     row above reads at a glance, without relying on a "→" prefix alone. */
-  margin-left: 0.6rem;
-  padding-left: 0.4rem;
+.fc-rrow:hover { background: color-mix(in srgb, var(--text) 6%, transparent); }
+.fc-rrow-dim { opacity: 0.35; }
+.fc-rgroup-children {
+  /* One continuous connecting line down the whole bracket of derived rows
+     (not a border per row) so the dependency reads as a single shape. */
+  margin: 0.15rem 0 0 0.6rem;
+  padding-left: 0.5rem;
   border-left: 2px solid;
-  font-size: 0.94em;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
 }
+.fc-rgroup-children .fc-rrow { font-size: 0.94em; }
 .fc-rrow-label {
   /* `margin-right: auto` pushes the [range][value] group to the row's right
      edge while the label keeps its natural (compact) width. `min-width: 0`
