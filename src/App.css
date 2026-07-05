@@ -611,58 +611,43 @@ input[type='range'] {
 .fc-now.live, .fc-nowlab.live { animation: fc-live-blink 1.4s ease-in-out infinite; }
 .fc-cursor { stroke: var(--text); stroke-width: 1; opacity: 0.55; }
 
-/* selected-time readout: a small stat-tile grid, 2 per row */
+/* Selected-time legend — kept alongside the in-graph bubbles, but as a
+   compact single-line-per-metric list rather than the old two-line,
+   two-column stat tiles (bubbles already carry the values front and
+   center; this is now just the reference/detail list). */
 .fc-readout {
-  padding: 0.55rem 0.65rem 0.6rem;
+  padding: 0.4rem 0.6rem 0.45rem;
   margin: 0.5rem 0 0.4rem;      /* sits below the graph now */
-  min-height: 2.4rem;           /* reserve space so the box grows quietly */
   background: #1e2235;
   border: 1px solid var(--border);
   border-radius: var(--rs);
-  font-size: 0.8rem;
+  font-size: 0.72rem;
 }
 .fc-rtime {
   font-weight: 700;
   font-variant-numeric: tabular-nums;
-  margin-bottom: 0.5rem;
+  margin-bottom: 0.3rem;
 }
-/* Experimental (see fc-bubble): time-only readout, no value grid */
-.fc-readout-time {
-  min-height: 0;
-  text-align: center;
-}
-.fc-readout-time .fc-rtime { margin-bottom: 0; }
-.fc-rgrid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 0.5rem 0.7rem;
-}
-.fc-rcell {
+.fc-rlist {
   display: flex;
   flex-direction: column;
   gap: 0.15rem;
-  min-width: 0;
 }
-.fc-rlabel {
+.fc-rrow {
   display: flex;
   align-items: center;
-  gap: 0.3rem;
-  font-size: 0.68rem;
+  gap: 0.35rem;
+}
+.fc-rrow-label {
+  flex: 1 1 auto;
+  min-width: 0;
   color: var(--muted);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.fc-rcell.derived .fc-rlabel { color: var(--text); opacity: 0.85; }
-.fc-rline {
-  display: flex;
-  align-items: baseline;
-  gap: 0.4rem;
-  white-space: nowrap;
-}
-.fc-rvalue { font-weight: 700; font-variant-numeric: tabular-nums; }
-.fc-rrange { font-size: 0.72rem; color: var(--muted); font-variant-numeric: tabular-nums; }
-.fc-rcell:not(.derived) .fc-rvalue { font-weight: 600; opacity: 0.85; } /* base inputs, dimmer than results */
+.fc-rrow-value { font-weight: 700; font-variant-numeric: tabular-nums; flex-shrink: 0; }
+.fc-rrow-range { font-size: 0.65rem; color: var(--muted); font-variant-numeric: tabular-nums; flex-shrink: 0; }
 .forecast-note {
   font-size: 0.66rem;
   color: var(--muted);

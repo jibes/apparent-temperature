@@ -814,10 +814,24 @@ function ForecastChart({ hours, lat, lon, active, selTs, setSelTs, visible }) {
         )}
       </div>
 
-      {/* Experimental: the per-metric value grid moved into the graph itself
-          as bubbles (above) — only the date/time context stays here. */}
-      <div className="fc-readout fc-readout-time">
+      {/* Legend, kept alongside the in-graph bubbles — one compact row per
+          metric instead of the previous two-line stat tiles. */}
+      <div className="fc-readout">
         <div className="fc-rtime">{dateStr} {hhmm}</div>
+        <div className="fc-rlist">
+          {series.map(s => {
+            const p = pointAt(s); if (!p) return null
+            const f = v => (s.dp ? v.toFixed(s.dp) : String(Math.round(v)))
+            return (
+              <div key={s.key} className="fc-rrow">
+                <i className="mdot" style={{ background: s.color }} />
+                <span className="fc-rrow-label">{s.derived && '→ '}{s.label}</span>
+                <span className="fc-rrow-value">{f(p.med)} {s.unit}</span>
+                <span className="fc-rrow-range">{f(p.lo)}–{f(p.hi)}</span>
+              </div>
+            )
+          })}
+        </div>
       </div>
 
       <p className="forecast-note">
