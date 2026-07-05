@@ -468,7 +468,9 @@ input[type='range'] {
 /* Green + synced while live (selection follows the clock); grey once a
    specific point elsewhere has been picked and it's no longer tracking. */
 .fc-now-btn.live { color: #86efac; border-color: #166534; }
-.fc-now-btn.live .fc-now-dot { background: #86efac; }
+/* Same keyframes/duration as the graph's Jetzt line (.fc-now.live below) so
+   the two blink in sync rather than drifting out of phase. */
+.fc-now-btn.live .fc-now-dot { background: #86efac; animation: fc-live-blink 1.4s ease-in-out infinite; }
 .fc-now-btn:hover { color: #86efac; border-color: #166534; }
 .fc-now-btn:hover .fc-now-dot { background: #86efac; }
 .fc-now-dot {
