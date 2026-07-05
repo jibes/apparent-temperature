@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo } from 'react'
+import { useState, useEffect, useLayoutEffect, useRef, useMemo } from 'react'
 import {
   utci, utciCategory, meanRadiantTemp, clearSkyMax, clearSkyGHI, solarElevation,
   ventilationAssessment, indoorApparentTemp,
@@ -482,9 +482,20 @@ function ForecastChart({ hours, lat, lon, active, selTs, setSelTs, visible }) {
     return () => ro.disconnect()
   }, [])
   // Restore horizontal scroll when this tab is shown again — display:none can
-  // reset scrollLeft in some browsers, so we reapply the saved position.
-  useEffect(() => {
-    if (visible && scrollRef.current) scrollRef.current.scrollLeft = scrollPos.current
+  // reset scrollLeft in some browsers, so we reapply the saved position. Also
+  // force one more render: layoutBubbles() reads scrollRef.current.clientWidth
+  // during the render phase, which happens *before* React commits this tab's
+  // display:none -> block, so right after switching back the very first
+  // render still sees the old (hidden, 0-width) DOM — collapsing the bubble
+  // viewport window to nothing and clamping every bubble to the left edge.
+  // useLayoutEffect (not useEffect) runs after the commit but before paint, so
+  // the extra render this schedules recomputes with the real width before the
+  // user ever sees the wrong frame.
+  useLayoutEffect(() => {
+    if (visible && scrollRef.current) {
+      scrollRef.current.scrollLeft = scrollPos.current
+      setRenderTick(t => t + 1)
+    }
   }, [visible])
 
   // The "Jetzt" line's position (and the interpolated now-value it drives)
