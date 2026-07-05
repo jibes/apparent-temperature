@@ -605,6 +605,10 @@ input[type='range'] {
 .fc-past { fill: #000; opacity: 0.28; }
 .fc-now { stroke: #86efac; stroke-width: 1.4; opacity: 0.85; }
 .fc-nowlab { fill: #86efac; font-size: 8.5px; font-weight: 700; }
+/* Live-TV-style blink while the selection is actually following the clock;
+   holds steady (no animation) once a specific point elsewhere is picked. */
+@keyframes fc-live-blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+.fc-now.live, .fc-nowlab.live { animation: fc-live-blink 1.4s ease-in-out infinite; }
 .fc-cursor { stroke: var(--text); stroke-width: 1; opacity: 0.55; }
 
 /* selected-time readout: a small stat-tile grid, 2 per row */

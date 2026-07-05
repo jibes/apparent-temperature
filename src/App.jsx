@@ -525,18 +525,23 @@ function ForecastChart({ hours, lat, lon, active, selTs, setSelTs, visible }) {
     return out
   }
 
-  // With exactly two units, show both scales — the one whose leftmost active
-  // toggle button comes first (BASES order) on the left edge, the other on
-  // the right, so the side a scale appears on matches the button that
-  // controls it reading left-to-right.
-  const dualUnits = units.length === 2
+  // With exactly two active BASE toggles, show both scales — the one whose
+  // button comes first (BASES order) on the left edge, the other on the
+  // right. Based on active *toggles*, not total distinct units across all
+  // visible series: temp+ah also brings in "rel. Feuchte" (%, a third unit),
+  // which would otherwise mask the temp/humidity pair's own dual axis even
+  // though exactly two base metrics are on — BASES units are all mutually
+  // distinct, so counting active toggles is equivalent to counting units
+  // among just the bases (ignoring derived-only additions like that one).
+  const activeBaseUnits = [...new Set(BASES.filter(b => active[b.key]).map(b => b.unit))]
+  const dualUnits = activeBaseUnits.length === 2
   const activeBaseIndex = unit => {
     let min = Infinity
     BASES.forEach((b, i) => { if (active[b.key] && b.unit === unit && i < min) min = i })
     return min
   }
   const [leftUnit, rightUnit] = dualUnits
-    ? [...units].sort((a, b) => activeBaseIndex(a) - activeBaseIndex(b))
+    ? [...activeBaseUnits].sort((a, b) => activeBaseIndex(a) - activeBaseIndex(b))
     : [null, null]
   const leftSeries  = dualUnits ? series.find(s => s.unit === leftUnit)  : null
   const rightSeries = dualUnits ? series.find(s => s.unit === rightUnit) : null
@@ -592,17 +597,28 @@ function ForecastChart({ hours, lat, lon, active, selTs, setSelTs, visible }) {
   }
 
   // Value bubbles at the selected point, split across both sides of the
-  // line (alternating by vertical position) and decluttered within each
-  // side so close-together values don't stack on top of each other.
+  // line (alternating by vertical position), flipped to whichever side is
+  // actually in view when the preferred side would render off-screen (the
+  // line can sit near either edge of the visible, scrolled window), and
+  // decluttered within each side so close-together values don't stack.
   const BUBBLE_GAP = 15
   function layoutBubbles() {
+    const viewLeft  = scrollPos.current
+    const viewRight = scrollPos.current + Math.max(0, w - axisW)
     const items = series.map(s => {
       const p = pointAt(s); if (!p) return null
       const f = v => (s.dp ? v.toFixed(s.dp) : String(Math.round(v)))
-      return { key: s.key, color: s.color, y: ymap(s)(p.med), text: `${f(p.med)} ${s.unit}` }
+      const text = `${f(p.med)} ${s.unit}`
+      return { key: s.key, color: s.color, y: ymap(s)(p.med), text, bw: text.length * 5.4 + 10 }
     }).filter(Boolean).sort((a, b) => a.y - b.y)
-    const left = [], right = []
-    items.forEach((it, i) => (i % 2 === 0 ? right : left).push(it))
+    items.forEach((it, i) => {
+      const pref = i % 2 === 0 ? 'right' : 'left'
+      const bx = pref === 'left' ? selX - 8 - it.bw : selX + 8
+      const outOfView = pref === 'left' ? bx < viewLeft : bx + it.bw > viewRight
+      it.side = outOfView ? (pref === 'left' ? 'right' : 'left') : pref
+    })
+    const left = items.filter(it => it.side === 'left')
+    const right = items.filter(it => it.side === 'right')
     for (const side of [left, right]) {
       let prev = -Infinity
       for (const it of side) { it.cy = Math.max(it.y, prev + BUBBLE_GAP); prev = it.cy }
@@ -655,14 +671,14 @@ function ForecastChart({ hours, lat, lon, active, selTs, setSelTs, visible }) {
     if (dragging) setDragging(false)
   }
 
-  // Reset the selection to live mode and scroll "now" into view (with a
-  // little breathing room on the left, not flush against the edge).
+  // Reset the selection to live mode and scroll all the way to the left —
+  // not just "now" into view, but far enough that its value bubbles (which
+  // can extend further left than the line itself) aren't cut off either.
   function jumpToNow() {
     setSelTs(null)
     if (scrollRef.current) {
-      const target = Math.max(0, xNow - 40)
-      scrollRef.current.scrollLeft = target
-      scrollPos.current = target
+      scrollRef.current.scrollLeft = 0
+      scrollPos.current = 0
     }
   }
 
@@ -722,8 +738,8 @@ function ForecastChart({ hours, lat, lon, active, selTs, setSelTs, visible }) {
                 strokeWidth={lineWidth(s.inputs)} strokeDasharray={s.derived ? '' : '4 2.5'} />
             ))}
 
-            <line x1={xNow} x2={xNow} y1={padT} y2={padT + innerH} className="fc-now" />
-            <text x={xNow + 3} y={padT + 9} className="fc-nowlab">Jetzt</text>
+            <line x1={xNow} x2={xNow} y1={padT} y2={padT + innerH} className={`fc-now ${selectingNow ? 'live' : ''}`} />
+            <text x={xNow + 3} y={padT + 9} className={`fc-nowlab ${selectingNow ? 'live' : ''}`}>Jetzt</text>
 
             {!selectingNow && (
               <line x1={selX} x2={selX} y1={padT} y2={padT + innerH} className="fc-cursor" />
@@ -741,12 +757,11 @@ function ForecastChart({ hours, lat, lon, active, selTs, setSelTs, visible }) {
             {(() => {
               const { left, right } = layoutBubbles()
               const bubble = (b, side) => {
-                const w = b.text.length * 5.4 + 10
-                const bx = side === 'left' ? selX - 8 - w : selX + 8
+                const bx = side === 'left' ? selX - 8 - b.bw : selX + 8
                 return (
                   <g key={`${side}-${b.key}`}>
-                    <rect x={bx} y={b.cy - 8} width={w} height={16} rx={8} fill="var(--surface)" stroke={b.color} strokeWidth="1" />
-                    <text x={bx + w / 2} y={b.cy} dominantBaseline="middle" textAnchor="middle" style={{ fill: b.color, fontSize: '9px', fontWeight: 700 }}>
+                    <rect x={bx} y={b.cy - 8} width={b.bw} height={16} rx={8} fill="var(--surface)" stroke={b.color} strokeWidth="1" />
+                    <text x={bx + b.bw / 2} y={b.cy} dominantBaseline="middle" textAnchor="middle" style={{ fill: b.color, fontSize: '9px', fontWeight: 700 }}>
                       {b.text}
                     </text>
                   </g>
