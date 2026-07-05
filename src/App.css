@@ -623,6 +623,7 @@ input[type='range'] {
   stroke-linejoin: round;
 }
 .fc-past { fill: #000; opacity: 0.28; }
+.fc-night { fill: #030712; opacity: 0.32; }
 .fc-now { stroke: #86efac; stroke-width: 1.4; opacity: 0.85; }
 .fc-nowlab { fill: #86efac; font-size: 8.5px; font-weight: 700; }
 /* Live-TV-style blink while the selection is actually following the clock;
@@ -654,14 +655,32 @@ input[type='range'] {
   margin-bottom: 0.3rem;
 }
 .fc-rlist {
-  display: flex;
-  flex-direction: column;
-  gap: 0.15rem;
+  /* 2 columns, filled top-to-bottom then wrapping to the next column —
+     roughly halves the list's height vs. a single column. */
+  column-count: 2;
+  column-gap: 1.1rem;
+}
+.fc-rgroup {
+  /* Keeps a base row + its derived children together as one unit rather
+     than letting the column break split them apart. */
+  break-inside: avoid-column;
+  margin-bottom: 0.15rem;
 }
 .fc-rrow {
   display: flex;
   align-items: center;
   gap: 0.35rem;
+  break-inside: avoid-column;
+}
+.fc-rrow + .fc-rrow { margin-top: 0.15rem; }
+.fc-rrow-child {
+  /* Indented, with a left border tinted in the *base's* color (this row's
+     own color is usually a close tint already) so the dependency on the
+     row above reads at a glance, without relying on a "→" prefix alone. */
+  margin-left: 0.6rem;
+  padding-left: 0.4rem;
+  border-left: 2px solid;
+  font-size: 0.94em;
 }
 .fc-rrow-label {
   /* `margin-right: auto` pushes the [range][value] group to the row's right

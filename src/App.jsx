@@ -340,11 +340,14 @@ const BASES = [
 // UTCI from the forecast), while Wind and Sonne are optional exposure factors
 // that refine it when active. Derived colors are tints of their base metric so
 // related lines read as one family instead of adding new hues.
+// `primary` = which BASE this derived value is grouped under in the legend
+// (a visual link, since e.g. rel. Feuchte depends on both temp and ah but
+// reads most naturally as "Feuchte, expressed relatively").
 const DERIVED = [
-  { key: 'rh',     label: 'rel. Feuchte',   unit: '%',    color: '#67e8f9', dp: 0, deps: ['temp', 'ah'], val: s => s.rh },
-  { key: 'effsun', label: 'Sonne effektiv', unit: 'W/m²', color: '#f59e0b', dp: 0, deps: ['csun', 'clouds'], val: s => s.s },
+  { key: 'rh',     label: 'rel. Feuchte',   unit: '%',    color: '#67e8f9', dp: 0, deps: ['temp', 'ah'], val: s => s.rh, primary: 'ah' },
+  { key: 'effsun', label: 'Sonne effektiv', unit: 'W/m²', color: '#f59e0b', dp: 0, deps: ['csun', 'clouds'], val: s => s.s, primary: 'csun' },
   { key: 'felt',   label: 'Gefühlt',        unit: '°C',   color: '#f472b6', dp: 0, felt: true,
-    show: a => a.temp && (a.ah || a.wind || a.csun) },
+    show: a => a.temp && (a.ah || a.wind || a.csun), primary: 'temp' },
 ]
 
 // A "nice" gridline step giving ~5 divisions over the range (1/2/5 × 10ⁿ).
@@ -540,15 +543,33 @@ function ForecastChart({ hours, lat, lon, active, selTs, setSelTs, visible }) {
   const x = i => 4 + i * pxPerHour
   const ymap = s => v => padT + (1 - (v - s.yMin) / (s.yMax - s.yMin)) * innerH
 
-  // Paths tolerate gaps (null points, e.g. a metric a model doesn't provide).
+  // Paths tolerate gaps (null points, e.g. a metric a model doesn't provide) —
+  // each contiguous run of real points becomes its own subpath. Within a run,
+  // slight smoothing: a quadratic bezier curving toward the midpoint of each
+  // consecutive pair rounds off hourly corners without overshooting past the
+  // data (unlike a full Catmull-Rom spline, which can bulge beyond the points).
   const linePath = (points, yf) => {
-    let d = '', pen = false
-    for (let i = 0; i < points.length; i++) {
-      const p = points[i]
-      if (!p) { pen = false; continue }
-      d += `${pen ? 'L' : 'M'}${x(i).toFixed(1)} ${yf(p.med).toFixed(1)} `
-      pen = true
+    let d = ''
+    let run = []
+    const flushRun = () => {
+      if (!run.length) return
+      const pts = run.map(i => [x(i), yf(points[i].med)])
+      d += `M${pts[0][0].toFixed(1)} ${pts[0][1].toFixed(1)} `
+      for (let i = 1; i < pts.length - 1; i++) {
+        const [cx, cy] = pts[i]
+        const [nx, ny] = pts[i + 1]
+        d += `Q${cx.toFixed(1)} ${cy.toFixed(1)} ${((cx + nx) / 2).toFixed(1)} ${((cy + ny) / 2).toFixed(1)} `
+      }
+      if (pts.length > 1) {
+        const [lx, ly] = pts[pts.length - 1]
+        d += `L${lx.toFixed(1)} ${ly.toFixed(1)} `
+      }
     }
+    for (let i = 0; i < points.length; i++) {
+      if (points[i]) run.push(i)
+      else { flushRun(); run = [] }
+    }
+    flushRun()
     return d
   }
   const bandPath = (points, yf) => {
@@ -612,6 +633,20 @@ function ForecastChart({ hours, lat, lon, active, selTs, setSelTs, visible }) {
     else if (hr % minorStep === 0) minor.push(i)
     if (hr !== 0 && hr % labelStep === 0) labels.push(i)
   })
+
+  // Night shading gives free temporal context (that peak is midday, this dip
+  // is 3am) without adding another line or number. Sun-below-horizon per hour
+  // (using the true UTC instant, like clearSkyAt), collapsed into contiguous
+  // night runs so each becomes one rect instead of one per hour.
+  const nightBands = []
+  {
+    let start = null
+    for (let i = 0; i <= n; i++) {
+      const isNight = i < n && solarElevation(lat, lon, new Date(hours[i].ts)) <= 0
+      if (isNight && start === null) start = i
+      if (!isNight && start !== null) { nightBands.push([start, i]); start = null }
+    }
+  }
 
   const nowIdx = nowHourIndex(hours)
   const nowFrac = nowFraction(hours, nowIdx)
@@ -786,6 +821,9 @@ function ForecastChart({ hours, lat, lon, active, selTs, setSelTs, visible }) {
             className={dragging ? 'dragging' : ''}
             style={{ touchAction: 'pan-x' }}
           >
+            {nightBands.map(([s, e], k) => (
+              <rect key={`night${k}`} x={x(s)} y={padT} width={x(e) - x(s)} height={innerH} className="fc-night" />
+            ))}
             {xNow > 0 && (
               <rect x={0} y={padT} width={xNow} height={innerH} className="fc-past" />
             )}
@@ -884,22 +922,40 @@ function ForecastChart({ hours, lat, lon, active, selTs, setSelTs, visible }) {
       </div>
 
       {/* Legend, kept alongside the in-graph bubbles — one compact row per
-          metric instead of the previous two-line stat tiles. */}
+          metric, laid out in 2 columns (column-flow, so a base + its derived
+          rows below it stay together as a group via break-inside: avoid
+          rather than splitting across columns). Each derived row is indented
+          with a left border in its base's color so the dependency reads at
+          a glance instead of relying on the "→" prefix alone. */}
       <div className="fc-readout">
         <div className="fc-rtime">{dateStr} {hhmm}</div>
         <div className="fc-rlist">
-          {series.map(s => {
-            const p = pointAt(s); if (!p) return null
-            const f = v => (s.dp ? v.toFixed(s.dp) : String(Math.round(v)))
-            return (
-              <div key={s.key} className="fc-rrow">
-                <i className="mdot" style={{ background: s.color }} />
-                <span className="fc-rrow-label">{s.derived && '→ '}{s.label}</span>
-                {showSpread && <span className="fc-rrow-range">{f(p.lo)}–{f(p.hi)}</span>}
-                <span className="fc-rrow-value">{f(p.med)} {s.unit}</span>
+          {(() => {
+            const bases = series.filter(s => !s.derived)
+            const deriveds = series.filter(s => s.derived)
+            const groups = bases.map(b => ({ base: b, children: deriveds.filter(d => d.primary === b.key) }))
+            const orphans = deriveds.filter(d => !bases.some(b => b.key === d.primary))
+            if (orphans.length) groups.push({ base: null, children: orphans })
+            const row = (s, indented) => {
+              const p = pointAt(s); if (!p) return null
+              const f = v => (s.dp ? v.toFixed(s.dp) : String(Math.round(v)))
+              return (
+                <div key={s.key} className={`fc-rrow ${indented ? 'fc-rrow-child' : ''}`}
+                  style={indented ? { borderLeftColor: s.color } : undefined}>
+                  <i className="mdot" style={{ background: s.color }} />
+                  <span className="fc-rrow-label">{s.label}</span>
+                  {showSpread && <span className="fc-rrow-range">{f(p.lo)}–{f(p.hi)}</span>}
+                  <span className="fc-rrow-value">{f(p.med)} {s.unit}</span>
+                </div>
+              )
+            }
+            return groups.map((g, gi) => (
+              <div key={g.base ? g.base.key : `orphans${gi}`} className="fc-rgroup">
+                {g.base && row(g.base, false)}
+                {g.children.map(d => row(d, true))}
               </div>
-            )
-          })}
+            ))
+          })()}
         </div>
       </div>
 
