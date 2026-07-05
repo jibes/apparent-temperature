@@ -953,11 +953,9 @@ function ForecastChart({ hours, lat, lon, active, selTs, setSelTs, visible }) {
       {/* Legend, kept alongside the in-graph bubbles — one compact row per
           metric, laid out in 2 columns (column-flow, so a base + its derived
           rows below it stay together as a group via break-inside: avoid
-          rather than splitting across columns). Derived rows sit in a
-          bracket — one continuous connecting line down the group, not a
-          border per row — so the dependency reads as one shape rather than
-          a stray dash next to each child. Clicking a row isolates its group,
-          dimming everything else so you can focus on one metric at a time. */}
+          rather than splitting across columns). Clicking a row isolates its
+          group, dimming everything else so you can focus on one metric
+          at a time. */}
       <div className="fc-readout">
         <div className="fc-rtime">{dateStr} {hhmm}</div>
         <div className="fc-rlist">
@@ -979,7 +977,7 @@ function ForecastChart({ hours, lat, lon, active, selTs, setSelTs, visible }) {
               <div key={g.base ? g.base.key : `orphans${gi}`} className="fc-rgroup">
                 {g.base && row(g.base)}
                 {g.children.length > 0 && (
-                  <div className="fc-rgroup-children" style={{ borderLeftColor: g.base ? g.base.color : g.children[0].color }}>
+                  <div className="fc-rgroup-children">
                     {g.children.map(d => row(d))}
                   </div>
                 )}
