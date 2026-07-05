@@ -603,8 +603,14 @@ function ForecastChart({ hours, lat, lon, active, selTs, setSelTs, visible }) {
   // decluttered within each side so close-together values don't stack.
   const BUBBLE_GAP = 15
   function layoutBubbles() {
+    // Measure the scroll container directly rather than reusing the `w`
+    // state (from ResizeObserver, defaults to 360 and can go stale if this
+    // chart was hidden — display:none reports 0 width — at mount, e.g. the
+    // app loading straight into the Lüften tab) so the visible window is
+    // always the actual current width, not a cached/default one.
+    const viewW = scrollRef.current ? scrollRef.current.clientWidth : Math.max(0, w - axisW)
     const viewLeft  = scrollPos.current
-    const viewRight = scrollPos.current + Math.max(0, w - axisW)
+    const viewRight = scrollPos.current + viewW
     const items = series.map(s => {
       const p = pointAt(s); if (!p) return null
       const f = v => (s.dp ? v.toFixed(s.dp) : String(Math.round(v)))
