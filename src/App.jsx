@@ -613,15 +613,28 @@ function ForecastChart({ hours, lat, lon, active, selTs, setSelTs, visible }) {
     }).filter(Boolean).sort((a, b) => a.y - b.y)
     items.forEach((it, i) => {
       const pref = i % 2 === 0 ? 'right' : 'left'
-      const bx = pref === 'left' ? selX - 8 - it.bw : selX + 8
-      const outOfView = pref === 'left' ? bx < viewLeft : bx + it.bw > viewRight
+      const prefBx = pref === 'left' ? selX - 8 - it.bw : selX + 8
+      const outOfView = pref === 'left' ? prefBx < viewLeft : prefBx + it.bw > viewRight
       it.side = outOfView ? (pref === 'left' ? 'right' : 'left') : pref
+      const bx = it.side === 'left' ? selX - 8 - it.bw : selX + 8
+      // Hard clamp to the visible window regardless of the side decision
+      // above — a bubble must never render further out than the viewport
+      // actually extends, on either side.
+      it.bx = Math.max(viewLeft + 2, Math.min(bx, viewRight - it.bw - 2))
     })
     const left = items.filter(it => it.side === 'left')
     const right = items.filter(it => it.side === 'right')
     for (const side of [left, right]) {
+      if (!side.length) continue
       let prev = -Infinity
       for (const it of side) { it.cy = Math.max(it.y, prev + BUBBLE_GAP); prev = it.cy }
+      // If the stack ran past the bottom, shift the whole group up; if that
+      // (or too many bubbles to fit at all) leaves the top one above the
+      // plot, shift back down — clamped inside the plot either way.
+      const bottomOverflow = side[side.length - 1].cy - (padT + innerH)
+      if (bottomOverflow > 0) side.forEach(it => { it.cy -= bottomOverflow })
+      const topOverflow = padT - side[0].cy
+      if (topOverflow > 0) side.forEach(it => { it.cy += topOverflow })
     }
     return { left, right }
   }
@@ -756,17 +769,14 @@ function ForecastChart({ hours, lat, lon, active, selTs, setSelTs, visible }) {
                 just noisy with several metrics active. */}
             {(() => {
               const { left, right } = layoutBubbles()
-              const bubble = (b, side) => {
-                const bx = side === 'left' ? selX - 8 - b.bw : selX + 8
-                return (
-                  <g key={`${side}-${b.key}`}>
-                    <rect x={bx} y={b.cy - 8} width={b.bw} height={16} rx={8} fill="var(--surface)" stroke={b.color} strokeWidth="1" />
-                    <text x={bx + b.bw / 2} y={b.cy} dominantBaseline="middle" textAnchor="middle" style={{ fill: b.color, fontSize: '9px', fontWeight: 700 }}>
-                      {b.text}
-                    </text>
-                  </g>
-                )
-              }
+              const bubble = (b, side) => (
+                <g key={`${side}-${b.key}`}>
+                  <rect x={b.bx} y={b.cy - 8} width={b.bw} height={16} rx={8} fill="var(--surface)" stroke={b.color} strokeWidth="1" />
+                  <text x={b.bx + b.bw / 2} y={b.cy} dominantBaseline="middle" textAnchor="middle" style={{ fill: b.color, fontSize: '9px', fontWeight: 700 }}>
+                    {b.text}
+                  </text>
+                </g>
+              )
               return <>{left.map(b => bubble(b, 'left'))}{right.map(b => bubble(b, 'right'))}</>
             })()}
 
