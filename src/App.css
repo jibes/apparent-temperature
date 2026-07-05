@@ -641,14 +641,24 @@ input[type='range'] {
   gap: 0.35rem;
 }
 .fc-rrow-label {
-  flex: 1 1 auto;
+  /* Fixed width (not flex:1) so the value column starts at the same x on
+     every row — it used to be pushed flush right along with the range,
+     so its start position shifted with however wide that row's range
+     text happened to be, making the values hard to scan down at a glance. */
+  flex: 0 0 5.4rem;
+  width: 5.4rem;
   min-width: 0;
   color: var(--muted);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.fc-rrow-value { font-weight: 700; font-variant-numeric: tabular-nums; flex-shrink: 0; }
+.fc-rrow-value {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+  text-align: left;
+}
 .fc-rrow-range { font-size: 0.65rem; color: var(--muted); font-variant-numeric: tabular-nums; flex-shrink: 0; }
 .forecast-note {
   font-size: 0.66rem;
