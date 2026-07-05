@@ -451,7 +451,7 @@ function ForecastChart({ hours, lat, lon, active, selTs, setSelTs, visible }) {
   const scrollRaf = useRef(null)
   const drag = useRef({ active: false, moved: false, startX: 0, startScrollLeft: 0, pointerType: 'mouse' })
   const [dragging, setDragging] = useState(false)
-  const [, setScrollTick] = useState(0) // forces a re-render so bubbles reposition as this scrolls
+  const [, setRenderTick] = useState(0) // forces a re-render: scroll (bubbles) and the 5s live-mode tick (below) share it
   const [w, setW] = useState(360)
   useEffect(() => () => { if (scrollRaf.current) cancelAnimationFrame(scrollRaf.current) }, [])
 
@@ -467,7 +467,7 @@ function ForecastChart({ hours, lat, lon, active, selTs, setSelTs, visible }) {
     if (scrollRaf.current) return
     scrollRaf.current = requestAnimationFrame(() => {
       scrollRaf.current = null
-      setScrollTick(t => t + 1)
+      setRenderTick(t => t + 1)
     })
   }
   useEffect(() => {
@@ -486,6 +486,21 @@ function ForecastChart({ hours, lat, lon, active, selTs, setSelTs, visible }) {
   useEffect(() => {
     if (visible && scrollRef.current) scrollRef.current.scrollLeft = scrollPos.current
   }, [visible])
+
+  // The "Jetzt" line's position (and the interpolated now-value it drives)
+  // is time-based, not data-based — it should visibly creep forward between
+  // 5-min data refreshes, not just jump each time new data arrives. Ticking
+  // only while live (nothing else selected) and this tab is actually on
+  // screen, since neither the line's exact sub-minute position nor battery
+  // spent redrawing an invisible chart matter otherwise. 5s is frequent
+  // enough to look alive without doing real work: series/paths are memoized
+  // separately, so this just recomputes a few numbers and repaints text/line
+  // positions.
+  useEffect(() => {
+    if (!visible || selTs != null) return
+    const id = setInterval(() => setRenderTick(t => t + 1), 5000)
+    return () => clearInterval(id)
+  }, [visible, selTs])
 
   const activeKey = Object.keys(active).filter(k => active[k]).sort().join(',')
   const series = useMemo(() => {
