@@ -876,8 +876,8 @@ function ForecastChart({ hours, lat, lon, active, selTs, setSelTs, visible }) {
               <div key={s.key} className="fc-rrow">
                 <i className="mdot" style={{ background: s.color }} />
                 <span className="fc-rrow-label">{s.derived && '→ '}{s.label}</span>
-                <span className="fc-rrow-value">{f(p.med)} {s.unit}</span>
                 <span className="fc-rrow-range">{f(p.lo)}–{f(p.hi)}</span>
+                <span className="fc-rrow-value">{f(p.med)} {s.unit}</span>
               </div>
             )
           })}
