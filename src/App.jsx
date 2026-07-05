@@ -642,23 +642,15 @@ function ForecastChart({ hours, lat, lon, active, selTs, setSelTs, visible }) {
   }
 
   // Value bubbles at the selected point, split across both sides of the line
-  // (alternating by vertical position) and decluttered within each side so
-  // close-together values don't stack. Fixed to the line itself — never
-  // shifted or clamped to stay inside the visible, scrolled window — so if
-  // the line is scrolled out of view, we just don't show them at all rather
-  // than have them float disconnected from the (invisible) line they belong to.
+  // (alternating by vertical position, flipping to the inner side only when
+  // the *chart's own fixed bounds* leave no room — not the current scroll
+  // viewport, so a bubble never flips back and forth while scrolling) and
+  // decluttered within each side so close-together values don't stack. Drawn
+  // in the same scrollable SVG as the line itself, so when the selection
+  // scrolls out of view the bubbles simply scroll away with it (clipped by
+  // the container) — no JS-level hiding.
   const BUBBLE_GAP = 15
   function layoutBubbles() {
-    // Measure the scroll container directly rather than reusing the `w`
-    // state (from ResizeObserver, defaults to 360 and can go stale if this
-    // chart was hidden — display:none reports 0 width — at mount, e.g. the
-    // app loading straight into the Lüften tab) so the visible window is
-    // always the actual current width, not a cached/default one.
-    const viewW = scrollRef.current ? scrollRef.current.clientWidth : Math.max(0, w - axisW)
-    const viewLeft  = scrollPos.current
-    const viewRight = scrollPos.current + viewW
-    if (selX < viewLeft || selX > viewRight) return { left: [], right: [] }
-
     const items = series.map(s => {
       const p = pointAt(s); if (!p) return null
       const f = v => (s.dp ? v.toFixed(s.dp) : String(Math.round(v)))
@@ -666,7 +658,14 @@ function ForecastChart({ hours, lat, lon, active, selTs, setSelTs, visible }) {
       return { key: s.key, color: s.color, y: ymap(s)(p.med), text, bw: text.length * 5.4 + 10 }
     }).filter(Boolean).sort((a, b) => a.y - b.y)
     items.forEach((it, i) => {
-      it.side = i % 2 === 0 ? 'right' : 'left'
+      const pref = i % 2 === 0 ? 'right' : 'left'
+      const prefBx = pref === 'left' ? selX - 8 - it.bw : selX + 8
+      // Flip to the inner side only when there's genuinely no room on the
+      // preferred side of the *entire chart* (near hour 0 or the very last
+      // hour) — based on the chart's fixed bounds, not the current scroll
+      // position, so bubbles don't flip back and forth as you scroll past.
+      const noRoom = pref === 'left' ? prefBx < 0 : prefBx + it.bw > chartW
+      it.side = noRoom ? (pref === 'left' ? 'right' : 'left') : pref
       it.bx = it.side === 'left' ? selX - 8 - it.bw : selX + 8
     })
     const left = items.filter(it => it.side === 'left')
