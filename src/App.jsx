@@ -641,11 +641,12 @@ function ForecastChart({ hours, lat, lon, active, selTs, setSelTs, visible }) {
     return interpPoint(s.points[nowIdx], s.points[nowIdx + 1], nowFrac)
   }
 
-  // Value bubbles at the selected point, split across both sides of the
-  // line (alternating by vertical position), flipped to whichever side is
-  // actually in view when the preferred side would render off-screen (the
-  // line can sit near either edge of the visible, scrolled window), and
-  // decluttered within each side so close-together values don't stack.
+  // Value bubbles at the selected point, split across both sides of the line
+  // (alternating by vertical position) and decluttered within each side so
+  // close-together values don't stack. Fixed to the line itself — never
+  // shifted or clamped to stay inside the visible, scrolled window — so if
+  // the line is scrolled out of view, we just don't show them at all rather
+  // than have them float disconnected from the (invisible) line they belong to.
   const BUBBLE_GAP = 15
   function layoutBubbles() {
     // Measure the scroll container directly rather than reusing the `w`
@@ -656,6 +657,8 @@ function ForecastChart({ hours, lat, lon, active, selTs, setSelTs, visible }) {
     const viewW = scrollRef.current ? scrollRef.current.clientWidth : Math.max(0, w - axisW)
     const viewLeft  = scrollPos.current
     const viewRight = scrollPos.current + viewW
+    if (selX < viewLeft || selX > viewRight) return { left: [], right: [] }
+
     const items = series.map(s => {
       const p = pointAt(s); if (!p) return null
       const f = v => (s.dp ? v.toFixed(s.dp) : String(Math.round(v)))
@@ -663,15 +666,8 @@ function ForecastChart({ hours, lat, lon, active, selTs, setSelTs, visible }) {
       return { key: s.key, color: s.color, y: ymap(s)(p.med), text, bw: text.length * 5.4 + 10 }
     }).filter(Boolean).sort((a, b) => a.y - b.y)
     items.forEach((it, i) => {
-      const pref = i % 2 === 0 ? 'right' : 'left'
-      const prefBx = pref === 'left' ? selX - 8 - it.bw : selX + 8
-      const outOfView = pref === 'left' ? prefBx < viewLeft : prefBx + it.bw > viewRight
-      it.side = outOfView ? (pref === 'left' ? 'right' : 'left') : pref
-      const bx = it.side === 'left' ? selX - 8 - it.bw : selX + 8
-      // Hard clamp to the visible window regardless of the side decision
-      // above — a bubble must never render further out than the viewport
-      // actually extends, on either side.
-      it.bx = Math.max(viewLeft + 2, Math.min(bx, viewRight - it.bw - 2))
+      it.side = i % 2 === 0 ? 'right' : 'left'
+      it.bx = it.side === 'left' ? selX - 8 - it.bw : selX + 8
     })
     const left = items.filter(it => it.side === 'left')
     const right = items.filter(it => it.side === 'right')
