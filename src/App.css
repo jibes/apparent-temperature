@@ -451,6 +451,24 @@ input[type='range'] {
   padding-right: 0.4rem;
   margin-bottom: 0.5rem;
 }
+.forecast-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+.fc-spread-btn {
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 0.2rem 0.6rem;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+.fc-spread-btn:hover { color: var(--text); border-color: var(--accent); }
+.fc-spread-btn.active { color: var(--accent); border-color: var(--accent); background: color-mix(in srgb, var(--accent) 15%, transparent); }
 .fc-now-btn {
   display: inline-flex;
   align-items: center;

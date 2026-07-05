@@ -453,6 +453,7 @@ function ForecastChart({ hours, lat, lon, active, selTs, setSelTs, visible }) {
   const [dragging, setDragging] = useState(false)
   const [, setRenderTick] = useState(0) // forces a re-render: scroll (bubbles) and the 5s live-mode tick (below) share it
   const [w, setW] = useState(360)
+  const [showSpread, setShowSpread] = useState(false)
   useEffect(() => () => { if (scrollRaf.current) cancelAnimationFrame(scrollRaf.current) }, [])
 
   // Desktop mouse-drag panning re-renders anyway (via `dragging` toggling),
@@ -746,15 +747,26 @@ function ForecastChart({ hours, lat, lon, active, selTs, setSelTs, visible }) {
     <div className="forecast" ref={wrapRef}>
       <div className="forecast-head">
         <span className="section-name muted">{spanDays}-Tage-Vorschau</span>
-        <button
-          type="button"
-          className={`fc-now-btn ${selectingNow ? 'live' : ''}`}
-          onClick={jumpToNow}
-          title={selectingNow ? 'Live – folgt der aktuellen Zeit' : 'Zu jetzt springen'}
-          aria-label="Zu jetzt springen"
-        >
-          <i className="fc-now-dot" /> Jetzt
-        </button>
+        <div className="forecast-head-actions">
+          <button
+            type="button"
+            className={`fc-spread-btn ${showSpread ? 'active' : ''}`}
+            onClick={() => setShowSpread(v => !v)}
+            title={showSpread ? 'Modell-Spanne ausblenden' : 'Modell-Spanne einblenden'}
+            aria-pressed={showSpread}
+          >
+            Spanne
+          </button>
+          <button
+            type="button"
+            className={`fc-now-btn ${selectingNow ? 'live' : ''}`}
+            onClick={jumpToNow}
+            title={selectingNow ? 'Live – folgt der aktuellen Zeit' : 'Zu jetzt springen'}
+            aria-label="Zu jetzt springen"
+          >
+            <i className="fc-now-dot" /> Jetzt
+          </button>
+        </div>
       </div>
 
       <div className="fc-plot">
@@ -790,7 +802,7 @@ function ForecastChart({ hours, lat, lon, active, selTs, setSelTs, visible }) {
               <line key={i} x1={x(i)} x2={x(i)} y1={padT} y2={padT + innerH} className="fc-daygrid" />
             ))}
 
-            {series.map(s => (
+            {showSpread && series.map(s => (
               <path key={`b${s.key}`} d={bandPath(s.points, ymap(s))} fill={s.color} opacity="0.13" stroke="none" />
             ))}
             {series.map(s => (
@@ -883,7 +895,7 @@ function ForecastChart({ hours, lat, lon, active, selTs, setSelTs, visible }) {
               <div key={s.key} className="fc-rrow">
                 <i className="mdot" style={{ background: s.color }} />
                 <span className="fc-rrow-label">{s.derived && '→ '}{s.label}</span>
-                <span className="fc-rrow-range">{f(p.lo)}–{f(p.hi)}</span>
+                {showSpread && <span className="fc-rrow-range">{f(p.lo)}–{f(p.hi)}</span>}
                 <span className="fc-rrow-value">{f(p.med)} {s.unit}</span>
               </div>
             )
