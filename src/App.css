@@ -622,6 +622,12 @@ input[type='range'] {
   font-variant-numeric: tabular-nums;
   margin-bottom: 0.5rem;
 }
+/* Experimental (see fc-bubble): time-only readout, no value grid */
+.fc-readout-time {
+  min-height: 0;
+  text-align: center;
+}
+.fc-readout-time .fc-rtime { margin-bottom: 0; }
 .fc-rgrid {
   display: grid;
   grid-template-columns: 1fr 1fr;

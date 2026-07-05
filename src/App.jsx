@@ -591,6 +591,25 @@ function ForecastChart({ hours, lat, lon, active, selTs, setSelTs, visible }) {
     return interpPoint(s.points[nowIdx], s.points[nowIdx + 1], nowFrac)
   }
 
+  // Value bubbles at the selected point, split across both sides of the
+  // line (alternating by vertical position) and decluttered within each
+  // side so close-together values don't stack on top of each other.
+  const BUBBLE_GAP = 15
+  function layoutBubbles() {
+    const items = series.map(s => {
+      const p = pointAt(s); if (!p) return null
+      const f = v => (s.dp ? v.toFixed(s.dp) : String(Math.round(v)))
+      return { key: s.key, color: s.color, y: ymap(s)(p.med), text: `${f(p.med)} ${s.unit}` }
+    }).filter(Boolean).sort((a, b) => a.y - b.y)
+    const left = [], right = []
+    items.forEach((it, i) => (i % 2 === 0 ? right : left).push(it))
+    for (const side of [left, right]) {
+      let prev = -Infinity
+      for (const it of side) { it.cy = Math.max(it.y, prev + BUBBLE_GAP); prev = it.cy }
+    }
+    return { left, right }
+  }
+
   // Snap to whichever is closer: the nearest whole hour, or "now" (its own
   // snap point, not aligned to the hourly grid) — so returning to live mode
   // is just tapping near the Jetzt line, the same gesture as picking any
@@ -716,6 +735,26 @@ function ForecastChart({ hours, lat, lon, active, selTs, setSelTs, visible }) {
               )
             })}
 
+            {/* Experimental: value bubbles flanking the selected line instead
+                of a separate legend/readout — see if this reads better or is
+                just noisy with several metrics active. */}
+            {(() => {
+              const { left, right } = layoutBubbles()
+              const bubble = (b, side) => {
+                const w = b.text.length * 5.4 + 10
+                const bx = side === 'left' ? selX - 8 - w : selX + 8
+                return (
+                  <g key={`${side}-${b.key}`}>
+                    <rect x={bx} y={b.cy - 8} width={w} height={16} rx={8} fill="var(--surface)" stroke={b.color} strokeWidth="1" />
+                    <text x={bx + w / 2} y={b.cy} dominantBaseline="middle" textAnchor="middle" style={{ fill: b.color, fontSize: '9px', fontWeight: 700 }}>
+                      {b.text}
+                    </text>
+                  </g>
+                )
+              }
+              return <>{left.map(b => bubble(b, 'left'))}{right.map(b => bubble(b, 'right'))}</>
+            })()}
+
             {labels.map(i => (
               <text key={`h${i}`} x={x(i)} y={H - 7} className="fc-hourlab" textAnchor="middle">
                 {String(hours[i].time.getHours()).padStart(2, '0')}
@@ -760,26 +799,10 @@ function ForecastChart({ hours, lat, lon, active, selTs, setSelTs, visible }) {
         )}
       </div>
 
-      <div className="fc-readout">
+      {/* Experimental: the per-metric value grid moved into the graph itself
+          as bubbles (above) — only the date/time context stays here. */}
+      <div className="fc-readout fc-readout-time">
         <div className="fc-rtime">{dateStr} {hhmm}</div>
-        <div className="fc-rgrid">
-          {series.map(s => {
-            const p = pointAt(s); if (!p) return null
-            const f = v => (s.dp ? v.toFixed(s.dp) : String(Math.round(v)))
-            return (
-              <div key={s.key} className={`fc-rcell ${s.derived ? 'derived' : ''}`}>
-                <span className="fc-rlabel">
-                  <i className="mdot" style={{ background: s.color }} />
-                  {s.derived && '→ '}{s.label}
-                </span>
-                <span className="fc-rline">
-                  <span className="fc-rvalue">{f(p.med)}{' '}{s.unit}</span>
-                  <span className="fc-rrange">{f(p.lo)}–{f(p.hi)}</span>
-                </span>
-              </div>
-            )
-          })}
-        </div>
       </div>
 
       <p className="forecast-note">
