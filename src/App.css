@@ -543,8 +543,17 @@ input[type='range'] {
   vertical-align: middle;
 }
 .mdot + .mdot { margin-left: -0.15rem; }
-.fc-plot { display: flex; align-items: stretch; }
+.fc-plot { display: flex; align-items: stretch; position: relative; }
 .fc-axis { flex: 0 0 auto; display: block; }
+/* Pinned to the plot's left edge, on top of (not inside) the scrollable
+   content — labels stay put as the chart scrolls under them instead of
+   scrolling away, without reserving a separate widening column. */
+.fc-ylabs {
+  position: absolute;
+  left: 6px;
+  top: 0;
+  pointer-events: none;
+}
 .fc-scroll {
   flex: 1 1 auto;
   min-width: 0;

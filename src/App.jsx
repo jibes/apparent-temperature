@@ -660,12 +660,6 @@ function ForecastChart({ hours, lat, lon, active, selTs, setSelTs, visible }) {
             {grid.map((g, k) => (
               <line key={k} x1={0} x2={chartW} y1={g.y} y2={g.y} className="fc-grid" />
             ))}
-            {/* Tick labels live inside the scrollable plot (at its true left
-                edge) instead of a separate reserved column — a halo via
-                stroke keeps them legible over whatever line/band is there. */}
-            {single && grid.map((g, k) => g.label != null && (
-              <text key={`yl${k}`} x={6} y={g.y} dominantBaseline="middle" className="fc-ylab-inside">{g.label}</text>
-            ))}
             {minor.map(i => (
               <line key={`mn${i}`} x1={x(i)} x2={x(i)} y1={padT} y2={padT + innerH} className="fc-gridminor" />
             ))}
@@ -715,6 +709,16 @@ function ForecastChart({ hours, lat, lon, active, selTs, setSelTs, visible }) {
             )}
           </svg>
         </div>
+        {/* Anchored to the plot's own left edge, not the scrollable content —
+            overlaying on top rather than scrolling away with it, and without
+            reserving a separate widening column next to the graph. */}
+        {single && (
+          <svg className="fc-ylabs" width="34" height={H} viewBox={`0 0 34 ${H}`} aria-hidden="true">
+            {grid.map((g, k) => g.label != null && (
+              <text key={`yl${k}`} x={4} y={g.y} dominantBaseline="middle" className="fc-ylab-inside">{g.label}</text>
+            ))}
+          </svg>
+        )}
       </div>
 
       <div className="fc-readout">
