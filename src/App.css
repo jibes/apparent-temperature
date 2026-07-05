@@ -624,6 +624,11 @@ input[type='range'] {
   border: 1px solid var(--border);
   border-radius: var(--rs);
   font-size: 0.72rem;
+  /* Compact table, not stretched to the full graph width on wide screens —
+     only shrinks (and lets labels ellipsis) once the viewport is genuinely
+     too narrow for it. */
+  width: max-content;
+  max-width: 100%;
 }
 .fc-rtime {
   font-weight: 700;
@@ -641,10 +646,15 @@ input[type='range'] {
   gap: 0.35rem;
 }
 .fc-rrow-label {
-  /* Never truncated — full label always readable. `margin-right: auto`
-     (not flex-grow on the label itself) pushes the [range][value] group as
-     far right as the row allows, while the label keeps its natural width. */
+  /* `margin-right: auto` pushes the [range][value] group to the row's right
+     edge while the label keeps its natural (compact) width. `min-width: 0`
+     + ellipsis only ever engage once the readout box itself has been forced
+     narrower than its content (viewport too small) — range/value never
+     shrink (flex-shrink: 0 below), so they stay fully readable. */
   margin-right: auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
   color: var(--muted);
   white-space: nowrap;
 }
