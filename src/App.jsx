@@ -642,15 +642,17 @@ function ForecastChart({ hours, lat, lon, active, selTs, setSelTs, visible }) {
   }
 
   // Value bubbles at the selected point, split across both sides of the line
-  // (alternating by vertical position, flipping to the inner side only when
-  // the *chart's own fixed bounds* leave no room — not the current scroll
-  // viewport, so a bubble never flips back and forth while scrolling) and
-  // decluttered within each side so close-together values don't stack. Drawn
-  // in the same scrollable SVG as the line itself, so when the selection
-  // scrolls out of view the bubbles simply scroll away with it (clipped by
-  // the container) — no JS-level hiding.
+  // (alternating by vertical position) and decluttered within each side so
+  // close-together values don't stack. Drawn in the same scrollable SVG as
+  // the line itself: as the line nears the edge of the *currently visible*
+  // viewport, a bubble that would clip off the outer edge flips to the inner
+  // side first, so it stays readable a little longer — then, once the whole
+  // selection scrolls out of view, everything (line + bubbles) simply scrolls
+  // away together like normal content. No JS-level hiding, ever.
   const BUBBLE_GAP = 15
   function layoutBubbles() {
+    const viewLeft = scrollRef.current ? scrollRef.current.scrollLeft : 0
+    const viewRight = viewLeft + (scrollRef.current ? scrollRef.current.clientWidth : chartW)
     const items = series.map(s => {
       const p = pointAt(s); if (!p) return null
       const f = v => (s.dp ? v.toFixed(s.dp) : String(Math.round(v)))
@@ -660,11 +662,10 @@ function ForecastChart({ hours, lat, lon, active, selTs, setSelTs, visible }) {
     items.forEach((it, i) => {
       const pref = i % 2 === 0 ? 'right' : 'left'
       const prefBx = pref === 'left' ? selX - 8 - it.bw : selX + 8
-      // Flip to the inner side only when there's genuinely no room on the
-      // preferred side of the *entire chart* (near hour 0 or the very last
-      // hour) — based on the chart's fixed bounds, not the current scroll
-      // position, so bubbles don't flip back and forth as you scroll past.
-      const noRoom = pref === 'left' ? prefBx < 0 : prefBx + it.bw > chartW
+      // Flip to the inner side once the preferred side would clip off the
+      // edge of the *visible viewport* — so it moves in before it would be
+      // scrolled out of view, rather than clinging to the outer side.
+      const noRoom = pref === 'left' ? prefBx < viewLeft : prefBx + it.bw > viewRight
       it.side = noRoom ? (pref === 'left' ? 'right' : 'left') : pref
       it.bx = it.side === 'left' ? selX - 8 - it.bw : selX + 8
     })
