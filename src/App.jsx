@@ -185,30 +185,36 @@ function DeltaRow({ label, inVal, outVal, unit, info }) {
   )
 }
 
+// One plain-language sentence explaining WHY the verdict is what it is —
+// shown in the hero banner, not buried under the numbers.
+function ventReason(Tin, RHin, Tout, RHout) {
+  const a   = ventilationAssessment(Tin, RHin, Tout, RHout)
+  const dpO = dewPoint(Tout, RHout)
+  const ahI = absoluteHumidity(Tin, RHin)
+  const ahO = absoluteHumidity(Tout, RHout)
+
+  if (a.condensationRisk)
+    return `Taupunkt aussen (${fmt1(dpO)}°C) liegt über der Innentemperatur (${fmt1(Tin)}°C) → Kondensat auf kühlen Oberflächen möglich.`
+  if (a.deltaAH < -0.3 && a.deltaH < -0.5)
+    return `Die Aussenluft ist trockener (${fmt1(ahO)} vs. ${fmt1(ahI)} g/m³) und kühler (Δh = ${fmt1(a.deltaH)} kJ/kg).`
+  if (a.deltaAH < -0.3)
+    return `Die Aussenluft ist trockener, aber ${a.deltaH > 0.5 ? 'wärmer' : 'thermisch ähnlich'} (Δh = ${fmt1(a.deltaH)} kJ/kg).`
+  if (a.deltaH < -0.5)
+    return `Die Aussenluft ist kühler, aber feuchter (${fmt1(ahO)} vs. ${fmt1(ahI)} g/m³).`
+  if (Math.abs(a.deltaAH) < 0.3 && Math.abs(a.deltaH) < 0.5)
+    return `Innen und aussen sind fast gleich – Lüften bringt v.a. frische Luft (CO₂).`
+  // "wärmer" only above the same threshold the verdict chip uses —
+  // otherwise chip and sentence could disagree in the 0–0.5 kJ/kg band.
+  return `Die Aussenluft ist feuchter (${fmt1(ahO)} vs. ${fmt1(ahI)} g/m³)${a.deltaH > 0.5 ? ` und wärmer (Δh = +${fmt1(a.deltaH)} kJ/kg)` : ''}.`
+}
+
+// Pure numbers ("nerd data") — the explaining sentence lives in the hero.
 function VentTable({ Tin, RHin, Tout, RHout }) {
   const a   = ventilationAssessment(Tin, RHin, Tout, RHout)
   const dpI = dewPoint(Tin, RHin)
   const dpO = dewPoint(Tout, RHout)
   const ahI = absoluteHumidity(Tin, RHin)
   const ahO = absoluteHumidity(Tout, RHout)
-
-  const v = ventVerdict(Tin, RHin, Tout, RHout)
-
-  let detail
-  if (a.condensationRisk)
-    detail = `Taupunkt aussen (${fmt1(dpO)}°C) > Innentemp. (${fmt1(Tin)}°C) → Kondensat auf kühlen Oberflächen möglich.`
-  else if (a.deltaAH < -0.3 && a.deltaH < -0.5)
-    detail = `Aussenluft ist trockener (${fmt1(ahO)} vs. ${fmt1(ahI)} g/m³) und kühler (Δh = ${fmt1(a.deltaH)} kJ/kg).`
-  else if (a.deltaAH < -0.3)
-    detail = `Aussenluft trockener, aber ${a.deltaH > 0.5 ? 'wärmer' : 'thermisch ähnlich'} (Δh = ${fmt1(a.deltaH)} kJ/kg).`
-  else if (a.deltaH < -0.5)
-    detail = `Aussenluft kühler, aber feuchter (${fmt1(ahO)} vs. ${fmt1(ahI)} g/m³).`
-  else if (Math.abs(a.deltaAH) < 0.3 && Math.abs(a.deltaH) < 0.5)
-    detail = `Kein wesentlicher Unterschied. Lüften sinnvoll für CO₂ / Luftqualität.`
-  else
-    // "wärmer" only above the same threshold the verdict chip uses —
-    // otherwise chip and sentence could disagree in the 0–0.5 kJ/kg band.
-    detail = `Aussenluft feuchter (${fmt1(ahO)} vs. ${fmt1(ahI)} g/m³)${a.deltaH > 0.5 ? ` und wärmer (Δh = +${fmt1(a.deltaH)} kJ/kg)` : ''}.`
 
   return (
     <div className="vent-table">
@@ -229,7 +235,6 @@ function VentTable({ Tin, RHin, Tout, RHout }) {
       <DeltaRow label="Enthalpie" inVal={a.hIn} outVal={a.hOut} unit="kJ/kg"
         info="Spez. Enthalpie der Feuchtluft (fühlbare + latente Wärme). Wenn aussen < innen, reduziert Lüften die thermische Last."
       />
-      <p className={`vent-detail ${v.cls}`}>{detail}</p>
     </div>
   )
 }
@@ -1304,6 +1309,49 @@ function fmtSlot(start, end) {
   return `${day} ${sh}–${eh} Uhr`
 }
 
+// Big-picture headline per verdict class — the tab's primary answer.
+const VENT_HERO = {
+  'Kondens.gefahr':  { title: 'Fenster zu lassen',  icon: '🚫' },
+  'Empfohlen':       { title: 'Jetzt lüften',        icon: '🪟' },
+  'Sinnvoll':        { title: 'Lüften lohnt sich',   icon: '🪟' },
+  'Abwägen':         { title: 'Abwägen',             icon: '🤔' },
+  'Kein Effekt':     { title: 'Kaum Effekt',         icon: '😐' },
+  'Nicht empfohlen': { title: 'Fenster zu lassen',   icon: '🚫' },
+}
+
+// Hour-by-hour verdict strip for the next 24 h — answers "if not now, when?"
+// at a glance instead of a single text line. Each cell is colored by the
+// same ventVerdict the hero uses (with the forecast outdoor conditions), and
+// the best window found by bestVentWindow is emphasized.
+function VentTimeline({ hours, Tin, RHin, win }) {
+  const now = Date.now()
+  const fut = hours.filter(h => h.ts + 3600000 > now).slice(0, 24)
+  if (!fut.length) return null
+  const inWin = h => win && h.time >= win.start && h.time <= win.end
+  return (
+    <div className="vent-timeline">
+      <div className="vt-title section-name muted">Nächste 24 h</div>
+      <div className="vt-strip">
+        {fut.map(h => {
+          const v = ventVerdict(Tin, RHin, h.temp, h.humidity)
+          return (
+            <div
+              key={h.ts}
+              className={`vt-cell ${v.cls} ${inWin(h) ? 'best' : ''}`}
+              title={`${String(h.time.getHours()).padStart(2, '0')} Uhr: ${v.short} (${fmt1(h.temp)} °C, ${Math.round(h.humidity)} %)`}
+            />
+          )
+        })}
+      </div>
+      <div className="vt-labels">
+        {fut.map((h, i) => (
+          <span key={h.ts} className="vt-lab">{i % 6 === 0 ? `${String(h.time.getHours()).padStart(2, '0')}` : ''}</span>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 // Ventilation tab (indoor + outdoor: temp + humidity only)
 
 function LueftenTab({
@@ -1331,26 +1379,73 @@ function LueftenTab({
   const canImport = graphPoint && (gpTemp !== outTemp || gpRH !== outRH)
   const importGraph = () => { setOutTempManual(gpTemp); setOutRHManual(gpRH) }
 
+  // What opening the windows would actually DO, as outcome chips: moisture
+  // and heat each get one, using the same ±thresholds as the verdict logic.
+  const a = ventilationAssessment(inTemp, inRH, outTemp, outRH)
+  const effects = []
+  if (Math.abs(a.deltaAH) >= 0.3) {
+    effects.push({ text: `Feuchte ${a.deltaAH < 0 ? '↓' : '↑'} ${fmt1(Math.abs(a.deltaAH))} g/m³`, cls: a.deltaAH < 0 ? 'good' : 'bad' })
+  }
+  if (Math.abs(a.deltaH) >= 0.5) {
+    effects.push({ text: `Wärmelast ${a.deltaH < 0 ? '↓' : '↑'} ${fmt1(Math.abs(a.deltaH))} kJ/kg`, cls: a.deltaH < 0 ? 'good' : 'bad' })
+  }
+  if (a.condensationRisk) effects.push({ text: '⚠ Kondensationsgefahr', cls: 'bad' })
+  if (!effects.length) effects.push({ text: 'nur Frischluft (CO₂)', cls: 'neutral' })
+
+  const hero = VENT_HERO[verdict.short] ?? { title: verdict.short, icon: '' }
+
   return (
     <>
-      <details className="section-card">
-        <summary className="section-summary">
+      {/* 1 — THE ANSWER. What the user came for, first and unmissable. */}
+      <div className={`vent-hero ${verdict.cls}`}>
+        <div className="vh-verdict">{hero.icon} {hero.title}</div>
+        <p className="vh-reason">{ventReason(inTemp, inRH, outTemp, outRH)}</p>
+        <div className="vh-chips">
+          {effects.map(e => (
+            <span key={e.text} className={`verdict-chip ${e.cls}`}>{e.text}</span>
+          ))}
+          {outManual && <span className="verdict-chip warn">manuelle Aussenwerte</span>}
+        </div>
+      </div>
+
+      {/* 2 — IF NOT NOW, WHEN? Hour strip beats a single text line. */}
+      {hours && (
+        <div className="section-card vent-when">
+          <VentTimeline hours={hours} Tin={inTemp} RHin={inRH} win={win} />
+          {win
+            ? <p className="vent-window good">
+                🪟 Bestes Fenster: <strong>{fmtSlot(win.start, win.end)}</strong> –
+                {' '}bringt das Raumklima näher an den Wohlfühlbereich (~20–24°C, 40–60%).
+              </p>
+            : comfyNow
+              ? <p className="vent-window neutral">
+                  Innenklima liegt bereits im Wohlfühlbereich (~20–24°C, 40–60%) – Lüften v.a. für frische Luft.
+                </p>
+              : <p className="vent-window neutral">
+                  In den nächsten 24 h bringt die Aussenluft das Raumklima dem Wohlfühlbereich nicht näher (z.&nbsp;B. im Winter zu kalt).
+                </p>}
+        </div>
+      )}
+
+      {/* 3 — THE INPUTS. Indoor is the only thing the app can't know — always
+          visible, no collapsible to hunt through. Outdoor is live data with a
+          clearly-marked manual what-if mode. */}
+      <div className="section-card vent-inputs">
+        <div className="vent-inputs-head">
           <span className="section-name">Innen</span>
           <span className="summary-chips">
-            <Chip>{inTemp}{' '}°C</Chip>
-            <Chip>{inRH}{' '}%</Chip>
             <Chip cls="felt">gefühlt {fmt1(feltIn)}°C</Chip>
           </span>
-        </summary>
-        <div className="section-body">
+        </div>
+        <div className="vent-inputs-body">
           <Slider label="Temperatur"       value={inTemp} onChange={setInTemp} min={10} max={40}  step={0.5} unit="°C" />
           <Slider label="Luftfeuchtigkeit" value={inRH}   onChange={setInRH}   min={1}  max={100} step={1}   unit="%" />
         </div>
-      </details>
+      </div>
 
       <details className="section-card">
         <summary className="section-summary">
-          <span className="section-name">Aussen</span>
+          <span className="section-name">Aussen {outManual ? '· manuell' : '· live'}</span>
           <span className="summary-chips">
             <Chip>{outTemp}{' '}°C</Chip>
             <Chip>{outRH}{' '}%</Chip>
@@ -1373,35 +1468,21 @@ function LueftenTab({
         </div>
       </details>
 
-      <div className="vent-result">
-        <div className="vent-result-head">
-          <span className="section-name">Empfehlung</span>
-          <span className={`verdict-chip ${verdict.cls}`}>{verdict.short}</span>
+      {/* 4 — NERD DATA. The full psychrometrics, opt-in. */}
+      <details className="section-card">
+        <summary className="section-summary">
+          <span className="section-name muted">Details (Physik)</span>
+        </summary>
+        <div className="section-body">
+          <VentTable Tin={inTemp} RHin={inRH} Tout={outTemp} RHout={outRH} />
+          <p className="vent-note">
+            Wind und Sonne fliessen hier bewusst nicht ein: Sie ändern nicht, <em>ob</em> die
+            Aussenluft trockener oder kühler ist. Wind beschleunigt zwar den Luftaustausch
+            (schnelleres Durchlüften), die Empfehlung selbst hängt aber nur von Temperatur und
+            Feuchte beider Seiten ab.
+          </p>
         </div>
-        <VentTable Tin={inTemp} RHin={inRH} Tout={outTemp} RHout={outRH} />
-      </div>
-
-      {hours && (
-        win
-          ? <p className="vent-window good">
-              🪟 Bestes Lüftungsfenster: <strong>{fmtSlot(win.start, win.end)}</strong> –
-              {' '}bringt das Raumklima näher an den Wohlfühlbereich (~20–24°C, 40–60%).
-            </p>
-          : comfyNow
-            ? <p className="vent-window neutral">
-                Innenklima liegt bereits im Wohlfühlbereich (~20–24°C, 40–60%) – Lüften v.a. für frische Luft.
-              </p>
-            : <p className="vent-window neutral">
-                In den nächsten 24 h bringt die Aussenluft das Raumklima dem Wohlfühlbereich nicht näher (z.&nbsp;B. im Winter zu kalt).
-              </p>
-      )}
-
-      <p className="vent-note">
-        Wind und Sonne fliessen hier bewusst nicht ein: Sie ändern nicht, <em>ob</em> die
-        Aussenluft trockener oder kühler ist. Wind beschleunigt zwar den Luftaustausch
-        (schnelleres Durchlüften), die Empfehlung selbst hängt aber nur von Temperatur und
-        Feuchte beider Seiten ab.
-      </p>
+      </details>
     </>
   )
 }

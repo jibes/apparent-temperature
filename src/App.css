@@ -221,6 +221,69 @@ body::-webkit-scrollbar-thumb:hover { background: var(--accent); }
   background: #20243c;
 }
 
+/* ── Lüften: answer-first layout ── */
+.vent-hero {
+  padding: 0.85rem 1rem;
+  border-radius: var(--r);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  margin-bottom: 0.6rem;
+}
+.vent-hero.good    { border-color: #166534; background: #14532d22; }
+.vent-hero.bad     { border-color: #991b1b; background: #7f1d1d22; }
+.vent-hero.warn    { border-color: #92400e; background: #78350f22; }
+.vent-hero.neutral { border-color: var(--border); }
+.vh-verdict { font-size: 1.25rem; font-weight: 800; }
+.vent-hero.good    .vh-verdict { color: #86efac; }
+.vent-hero.bad     .vh-verdict { color: #fca5a5; }
+.vent-hero.warn    .vh-verdict { color: #fcd34d; }
+.vh-reason {
+  font-size: 0.78rem;
+  color: var(--muted);
+  margin: 0.3rem 0 0;
+  line-height: 1.45;
+}
+.vh-chips {
+  display: flex;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+  margin-top: 0.55rem;
+}
+
+.vent-when { padding: 0.75rem 1rem 0.6rem; }
+.vent-when .vent-window { margin: 0.55rem 0 0.2rem; }
+.vt-title { margin-bottom: 0.45rem; }
+.vt-strip {
+  display: flex;
+  gap: 2px;
+  height: 26px;
+  border-radius: 6px;
+  overflow: hidden;
+}
+.vt-cell { flex: 1; opacity: 0.85; }
+.vt-cell.good    { background: #22c55e; }
+.vt-cell.warn    { background: #eab308; }
+.vt-cell.neutral { background: #3a4160; }
+.vt-cell.bad     { background: #b91c1c; }
+/* the bestVentWindow run pops out of the strip */
+.vt-cell.best    { opacity: 1; box-shadow: inset 0 -3px 0 #fff9; }
+.vt-labels { display: flex; margin-top: 0.15rem; }
+.vt-lab {
+  flex: 1;
+  font-size: 0.6rem;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.vent-inputs { padding: 0.75rem 1rem 1rem; }
+.vent-inputs-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+}
+.vent-inputs-body .control:first-child { margin-top: 0.7rem; }
+
 .vent-window {
   font-size: 0.8rem;
   line-height: 1.5;
@@ -342,20 +405,6 @@ input[type='range'] {
   margin-bottom: 0.4rem;
 }
 
-/* ── Ventilation result block ── */
-.vent-result {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--r);
-  padding: 0.85rem 1rem 1rem;
-  margin-bottom: 0.6rem;
-}
-.vent-result-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 0.5rem;
-}
 .vent-note {
   font-size: 0.76rem;
   line-height: 1.55;
@@ -749,18 +798,6 @@ input[type='range'] {
 .d-delta.good    { background: #14532d44; color: #86efac; }
 .d-delta.bad     { background: #7f1d1d44; color: #fca5a5; }
 .d-delta.neutral { background: #1e2235;   color: var(--muted); }
-
-.vent-detail {
-  font-size: 0.8rem;
-  line-height: 1.55;
-  margin-top: 0.75rem;
-  padding: 0.65rem 0.8rem;
-  border-radius: var(--rs);
-}
-.vent-detail.good    { background: #14532d33; color: #86efac; border: 1px solid #166534; }
-.vent-detail.bad     { background: #7f1d1d33; color: #fca5a5; border: 1px solid #991b1b; }
-.vent-detail.warn    { background: #78350f33; color: #fcd34d; border: 1px solid #92400e; }
-.vent-detail.neutral { background: #1e2235;   color: var(--muted); border: 1px solid var(--border); }
 
 /* ── Formula section ── */
 .formula-card { opacity: 0.7; }
