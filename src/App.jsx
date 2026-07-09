@@ -16,7 +16,11 @@ function fmt1(n) { return (Math.round(n * 10) / 10).toFixed(1) }
 // "current" shared by the headline value, the graph, and the outdoor
 // reading, so they never disagree about which sample is "now".
 function nowHourIndex(hours) {
-  return Math.max(0, hours.findIndex(h => h.ts + 3600000 > Date.now()))
+  const i = hours.findIndex(h => h.ts + 3600000 > Date.now())
+  // All hours in the past (data went stale, e.g. after a long offline spell):
+  // the *newest* hour is the least-wrong stand-in for "now" — not index 0,
+  // which would be the very oldest reading in the window.
+  return i === -1 ? hours.length - 1 : i
 }
 
 // How far "now" sits between hours[nowIdx] and the next hour, as a 0–1
@@ -134,8 +138,17 @@ function Slider({ label, value, onChange, min, max, step, unit }) {
 
 function Info({ children }) {
   const [open, setOpen] = useState(false)
+  const ref = useRef()
+  // Close on any tap/click outside — an open tooltip otherwise stays until
+  // its own "i" is hit again, unlike every other transient UI element.
+  useEffect(() => {
+    if (!open) return
+    const close = e => { if (ref.current && !ref.current.contains(e.target)) setOpen(false) }
+    document.addEventListener('pointerdown', close)
+    return () => document.removeEventListener('pointerdown', close)
+  }, [open])
   return (
-    <span className="info-wrap">
+    <span className="info-wrap" ref={ref}>
       <button
         className="info-btn"
         onClick={e => { e.stopPropagation(); e.preventDefault(); setOpen(o => !o) }}
@@ -193,7 +206,9 @@ function VentTable({ Tin, RHin, Tout, RHout }) {
   else if (Math.abs(a.deltaAH) < 0.3 && Math.abs(a.deltaH) < 0.5)
     detail = `Kein wesentlicher Unterschied. Lüften sinnvoll für CO₂ / Luftqualität.`
   else
-    detail = `Aussenluft feuchter (${fmt1(ahO)} vs. ${fmt1(ahI)} g/m³) und wärmer (Δh = +${fmt1(a.deltaH)} kJ/kg).`
+    // "wärmer" only above the same threshold the verdict chip uses —
+    // otherwise chip and sentence could disagree in the 0–0.5 kJ/kg band.
+    detail = `Aussenluft feuchter (${fmt1(ahO)} vs. ${fmt1(ahI)} g/m³)${a.deltaH > 0.5 ? ` und wärmer (Δh = +${fmt1(a.deltaH)} kJ/kg)` : ''}.`
 
   return (
     <div className="vent-table">
@@ -443,6 +458,55 @@ function lineWidth(inputs) {
   return Math.min(3, 1.4 + 0.45 * (inputs - 1))
 }
 
+// Chart geometry, shared by the render body and the memoized path builder.
+// axisW is constant — it used to widen to 34px for a labelled side gutter
+// when a single shared unit made ticks meaningful, but that made the plot
+// itself resize (and everything scroll-jump) whenever toggling a metric
+// changed `single`. Axis labels (when shown) now render inside the
+// scrollable plot instead of in a separate reserved column.
+const H = 260, padT = 10, padB = 24, padR = 10
+const axisW = 6
+const innerH = H - padT - padB
+
+// Paths tolerate gaps (null points, e.g. a metric a model doesn't provide) —
+// each contiguous run of real points becomes its own subpath. Within a run,
+// slight smoothing: a quadratic bezier curving toward the midpoint of each
+// consecutive pair rounds off hourly corners without overshooting past the
+// data (unlike a full Catmull-Rom spline, which can bulge beyond the points).
+function buildLinePath(points, x, yf) {
+  let d = ''
+  let run = []
+  const flushRun = () => {
+    if (!run.length) return
+    const pts = run.map(i => [x(i), yf(points[i].med)])
+    d += `M${pts[0][0].toFixed(1)} ${pts[0][1].toFixed(1)} `
+    for (let i = 1; i < pts.length - 1; i++) {
+      const [cx, cy] = pts[i]
+      const [nx, ny] = pts[i + 1]
+      d += `Q${cx.toFixed(1)} ${cy.toFixed(1)} ${((cx + nx) / 2).toFixed(1)} ${((cy + ny) / 2).toFixed(1)} `
+    }
+    if (pts.length > 1) {
+      const [lx, ly] = pts[pts.length - 1]
+      d += `L${lx.toFixed(1)} ${ly.toFixed(1)} `
+    }
+  }
+  for (let i = 0; i < points.length; i++) {
+    if (points[i]) run.push(i)
+    else { flushRun(); run = [] }
+  }
+  flushRun()
+  return d
+}
+function buildBandPath(points, x, yf) {
+  const idx = points.map((p, i) => (p ? i : -1)).filter(i => i >= 0)
+  if (!idx.length) return ''
+  let up = ''
+  idx.forEach((i, k) => { up += `${k ? 'L' : 'M'}${x(i).toFixed(1)} ${yf(points[i].hi).toFixed(1)} ` })
+  let dn = ''
+  for (let k = idx.length - 1; k >= 0; k--) { const i = idx[k]; dn += `L${x(i).toFixed(1)} ${yf(points[i].lo).toFixed(1)} ` }
+  return `${up}${dn}Z`
+}
+
 // Multi-day forecast chart. BASE inputs are toggled from the shared selector
 // above (same `active` state that drives the current-value readout); DERIVED
 // outputs appear when their inputs are active. Same units share one scale.
@@ -464,9 +528,9 @@ function ForecastChart({ hours, lat, lon, active, selTs, setSelTs, visible }) {
   // which is what made bubbles reposition there — but native touch/trackpad
   // scrolling never touches React state at all, so on a phone the scroll
   // position ref updated but nothing ever re-rendered to pick it up. rAF-
-  // throttled so a fast swipe doesn't spam re-renders (series/paths are
-  // memoized on hours/active, not scroll, so these re-renders are cheap —
-  // only the bubble/label JSX actually redoes work).
+  // throttled so a fast swipe doesn't spam re-renders. The series data, the
+  // SVG path strings, and the night bands are all memoized (on data/width,
+  // not scroll), so these re-renders only redo the bubble/label layout.
   function onChartScroll(e) {
     scrollPos.current = e.currentTarget.scrollLeft
     if (scrollRaf.current) return
@@ -512,17 +576,63 @@ function ForecastChart({ hours, lat, lon, active, selTs, setSelTs, visible }) {
   // enough to look alive without doing real work: series/paths are memoized
   // separately, so this just recomputes a few numbers and repaints text/line
   // positions.
+  // "Live" is not just selTs == null: a selected hour that has aged out of
+  // the data window also falls back to live mode (see selectingNow below) —
+  // the button blinks green then too, so the line must creep along as well.
+  const liveMode = selTs == null || !(hours || []).some(h => h.ts === selTs)
   useEffect(() => {
-    if (!visible || selTs != null) return
+    if (!visible || !liveMode) return
     const id = setInterval(() => setRenderTick(t => t + 1), 5000)
     return () => clearInterval(id)
-  }, [visible, selTs])
+  }, [visible, liveMode])
 
   const activeKey = Object.keys(active).filter(k => active[k]).sort().join(',')
   const series = useMemo(() => {
     if (!hours || !hours.length) return null
     return buildSeries(hours, { lat, lon }, active)
   }, [hours, activeKey, lat, lon])
+
+  // The expensive per-render pieces — SVG path strings (every series × ~390
+  // points) and the night bands (~390 solar-elevation evaluations) — are
+  // memoized on data + width, so scroll frames and the 5s live tick only
+  // redo the cheap bubble/label layout.
+  const paths = useMemo(() => {
+    if (!series) return null
+    const pxPerHour = Math.max(6, (w - axisW) / 24)
+    const x = i => 4 + i * pxPerHour
+    const ymap = s => v => padT + (1 - (v - s.yMin) / (s.yMax - s.yMin)) * innerH
+    return new Map(series.map(s => [s.key, {
+      line: buildLinePath(s.points, x, ymap(s)),
+      band: buildBandPath(s.points, x, ymap(s)),
+    }]))
+  }, [series, w])
+
+  // Night shading gives free temporal context (that peak is midday, this dip
+  // is 3am) without adding another line or number. Sun-below-horizon per hour
+  // (using the true UTC instant, like clearSkyAt), collapsed into contiguous
+  // night runs so each becomes one rect instead of one per hour. Stored as
+  // hour indices; the x-positions are applied at render time.
+  const nightBands = useMemo(() => {
+    if (!hours || !hours.length) return []
+    const bands = []
+    let start = null
+    for (let i = 0; i <= hours.length; i++) {
+      const isNight = i < hours.length && solarElevation(lat, lon, new Date(hours[i].ts)) <= 0
+      if (isNight && start === null) start = i
+      if (!isNight && start !== null) { bands.push([start, i]); start = null }
+    }
+    return bands
+  }, [hours, lat, lon])
+
+  // If the isolated metric's series disappears (its toggle switched off, or a
+  // dependency dropped), clear the isolation instead of keeping the stale key
+  // around — otherwise re-enabling that toggle later would surprisingly come
+  // back pre-isolated.
+  useEffect(() => {
+    if (isolated != null && series && !series.some(s => s.key === isolated)) {
+      setIsolated(null)
+    }
+  }, [series, isolated])
 
   if (!series) return null
 
@@ -548,62 +658,14 @@ function ForecastChart({ hours, lat, lon, active, selTs, setSelTs, visible }) {
     : null
   const dimmed = s => highlightKeys != null && !highlightKeys.has(s.key)
 
-  const H = 260, padT = 10, padB = 24, padR = 10
   const units = [...new Set(series.map(s => s.unit))]
   const single = units.length === 1
-  // Constant — this used to widen to 34px for a labelled side gutter when a
-  // single shared unit made ticks meaningful, but that made the plot itself
-  // resize (and everything scroll-jump) whenever toggling a metric changed
-  // `single`. Axis labels (when shown) now render inside the scrollable
-  // plot instead of in a separate reserved column, so the gutter never
-  // needs to be wider than this.
-  const axisW = 6
-  const innerH = H - padT - padB
   const n = hours.length
 
   const pxPerHour = Math.max(6, (w - axisW) / 24)
   const chartW = Math.round((n - 1) * pxPerHour + padR + 4)
   const x = i => 4 + i * pxPerHour
   const ymap = s => v => padT + (1 - (v - s.yMin) / (s.yMax - s.yMin)) * innerH
-
-  // Paths tolerate gaps (null points, e.g. a metric a model doesn't provide) —
-  // each contiguous run of real points becomes its own subpath. Within a run,
-  // slight smoothing: a quadratic bezier curving toward the midpoint of each
-  // consecutive pair rounds off hourly corners without overshooting past the
-  // data (unlike a full Catmull-Rom spline, which can bulge beyond the points).
-  const linePath = (points, yf) => {
-    let d = ''
-    let run = []
-    const flushRun = () => {
-      if (!run.length) return
-      const pts = run.map(i => [x(i), yf(points[i].med)])
-      d += `M${pts[0][0].toFixed(1)} ${pts[0][1].toFixed(1)} `
-      for (let i = 1; i < pts.length - 1; i++) {
-        const [cx, cy] = pts[i]
-        const [nx, ny] = pts[i + 1]
-        d += `Q${cx.toFixed(1)} ${cy.toFixed(1)} ${((cx + nx) / 2).toFixed(1)} ${((cy + ny) / 2).toFixed(1)} `
-      }
-      if (pts.length > 1) {
-        const [lx, ly] = pts[pts.length - 1]
-        d += `L${lx.toFixed(1)} ${ly.toFixed(1)} `
-      }
-    }
-    for (let i = 0; i < points.length; i++) {
-      if (points[i]) run.push(i)
-      else { flushRun(); run = [] }
-    }
-    flushRun()
-    return d
-  }
-  const bandPath = (points, yf) => {
-    const idx = points.map((p, i) => (p ? i : -1)).filter(i => i >= 0)
-    if (!idx.length) return ''
-    let up = ''
-    idx.forEach((i, k) => { up += `${k ? 'L' : 'M'}${x(i).toFixed(1)} ${yf(points[i].hi).toFixed(1)} ` })
-    let dn = ''
-    for (let k = idx.length - 1; k >= 0; k--) { const i = idx[k]; dn += `L${x(i).toFixed(1)} ${yf(points[i].lo).toFixed(1)} ` }
-    return `${up}${dn}Z`
-  }
 
   // Tick marks (position + label) for one series' own scale.
   const axisTicks = s => {
@@ -657,24 +719,13 @@ function ForecastChart({ hours, lat, lon, active, selTs, setSelTs, visible }) {
     if (hr !== 0 && hr % labelStep === 0) labels.push(i)
   })
 
-  // Night shading gives free temporal context (that peak is midday, this dip
-  // is 3am) without adding another line or number. Sun-below-horizon per hour
-  // (using the true UTC instant, like clearSkyAt), collapsed into contiguous
-  // night runs so each becomes one rect instead of one per hour.
-  const nightBands = []
-  {
-    let start = null
-    for (let i = 0; i <= n; i++) {
-      const isNight = i < n && solarElevation(lat, lon, new Date(hours[i].ts)) <= 0
-      if (isNight && start === null) start = i
-      if (!isNight && start !== null) { nightBands.push([start, i]); start = null }
-    }
-  }
-
   const nowIdx = nowHourIndex(hours)
   const nowFrac = nowFraction(hours, nowIdx)
   const xNow = x(nowIdx) + nowFrac * pxPerHour
-  const spanDays = Math.round((n - nowIdx) / 24)
+  // ceil, not round: the remaining window shrinks through the day (16 days
+  // minus the hours already past today), and rounding made the heading
+  // wobble between "15-" and "16-Tage-Vorschau" depending on the time.
+  const spanDays = Math.ceil((n - nowIdx) / 24)
 
   // Selecting nothing (the default) means "now" — an exact, interpolated
   // position between two hourly samples, not snapped to either one. Tapping
@@ -793,6 +844,14 @@ function ForecastChart({ hours, lat, lon, active, selTs, setSelTs, visible }) {
     drag.current.active = false
     if (dragging) setDragging(false)
   }
+  // pointercancel = the browser took the gesture over (native touch pan) —
+  // never a deliberate tap, so end the drag WITHOUT picking. Routing it to
+  // onUp used to select a point on scroll flicks too fast to cross the
+  // movement threshold before the takeover.
+  function onCancel() {
+    drag.current.active = false
+    if (dragging) setDragging(false)
+  }
 
   // Reset the selection to live mode and scroll all the way to the left —
   // not just "now" into view, but far enough that its value bubbles (which
@@ -844,7 +903,7 @@ function ForecastChart({ hours, lat, lon, active, selTs, setSelTs, visible }) {
             onPointerDown={onDown}
             onPointerMove={onMove}
             onPointerUp={onUp}
-            onPointerCancel={onUp}
+            onPointerCancel={onCancel}
             className={dragging ? 'dragging' : ''}
             style={{ touchAction: 'pan-x' }}
           >
@@ -868,11 +927,11 @@ function ForecastChart({ hours, lat, lon, active, selTs, setSelTs, visible }) {
             ))}
 
             {showSpread && series.map(s => (
-              <path key={`b${s.key}`} d={bandPath(s.points, ymap(s))} fill={s.color}
+              <path key={`b${s.key}`} d={paths.get(s.key).band} fill={s.color}
                 opacity={dimmed(s) ? 0.04 : 0.13} stroke="none" />
             ))}
             {series.map(s => (
-              <path key={`l${s.key}`} d={linePath(s.points, ymap(s))} fill="none" stroke={s.color}
+              <path key={`l${s.key}`} d={paths.get(s.key).line} fill="none" stroke={s.color}
                 strokeWidth={lineWidth(s.inputs)} strokeDasharray={s.derived ? '' : '4 2.5'}
                 opacity={dimmed(s) ? 0.15 : 1} style={{ transition: 'opacity 0.15s' }} />
             ))}
@@ -963,9 +1022,12 @@ function ForecastChart({ hours, lat, lon, active, selTs, setSelTs, visible }) {
             const row = s => {
               const p = pointAt(s); if (!p) return null
               const f = v => (s.dp ? v.toFixed(s.dp) : String(Math.round(v)))
+              const toggleIso = () => setIsolated(v => (v === s.key ? null : s.key))
               return (
                 <div key={s.key} className={`fc-rrow ${dimmed(s) ? 'fc-rrow-dim' : ''}`}
-                  onClick={() => setIsolated(v => (v === s.key ? null : s.key))}>
+                  role="button" tabIndex={0} aria-pressed={isolated === s.key}
+                  onClick={toggleIso}
+                  onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleIso() } }}>
                   <i className="mdot" style={{ background: s.color }} />
                   <span className="fc-rrow-label">{s.label}</span>
                   {showSpread && <span className="fc-rrow-range">{f(p.lo)}–{f(p.hi)}</span>}
@@ -989,7 +1051,7 @@ function ForecastChart({ hours, lat, lon, active, selTs, setSelTs, visible }) {
 
       <p className="forecast-note">
         Basiswerte (gestrichelt) an/aus – abgeleitete Größen (durchgezogen: rel. Feuchte, effektive Sonne, Gefühlt) erscheinen automatisch.
-        {' '}„Gefühlt“ erscheint ab Lufttemp. + einem Faktor (Feuchte, Wind oder Sonne) und bezieht nur die aktiven Faktoren ein (ohne Feuchte-Wahl: neutrale 50 %). Die Linienstärke wächst mit der Zahl einfliessender Grössen. Gleiche Einheiten teilen sich eine Skala (direkt vergleichbar). Tippen wählt einen Zeitpunkt; Schattierung = Modell-Spanne.
+        {' '}„Gefühlt“ erscheint ab Lufttemp. + einem Faktor (Feuchte, Wind oder Sonne) und bezieht nur die aktiven Faktoren ein (ohne Feuchte-Wahl: neutrale 50 %). Die Linienstärke wächst mit der Zahl einfliessender Grössen. Gleiche Einheiten teilen sich eine Skala (direkt vergleichbar). Dunkle Bänder = Nacht. Tippen wählt einen Zeitpunkt; Legende antippen hebt eine Größe hervor; „Spanne“ blendet die Modell-Spanne ein.
       </p>
     </div>
   )
@@ -1077,8 +1139,18 @@ function MetricToggles({ active, onToggle }) {
 // The one headline number: UTCI folded from whichever factors are active.
 // Borderless — color-coded text only, no card background.
 function FeltNow({ point, airTemp, dp }) {
-  const schwuel = dp >= 18 ? 'stark' : dp >= 16 ? 'spürbar' : null
+  const schwuel = dp != null && dp >= 18 ? 'stark' : dp != null && dp >= 16 ? 'spürbar' : null
 
+  // No usable outdoor reading at all (no data yet AND the sliders are on a
+  // manual what-if override) — show a placeholder, not a made-up number.
+  if (airTemp == null) {
+    return (
+      <div className="felt-now">
+        <div className="ap-val">–{' '}°C</div>
+        <p className="felt-hint">Warte auf Wetterdaten…</p>
+      </div>
+    )
+  }
   if (!point) {
     return (
       <div className="felt-now">
@@ -1102,8 +1174,10 @@ function FeltNow({ point, airTemp, dp }) {
   )
 }
 
-function FeltTab({ outTemp, outRH, hours, wxMeta, gridPlace, lat, lon, selTs, setSelTs, visible }) {
-  const [active, setActive] = useState({ temp: true, ah: true, wind: true, csun: true, clouds: true })
+function FeltTab({ outTemp, outRH, outManual, hours, wxMeta, gridPlace, lat, lon, selTs, setSelTs, visible }) {
+  // Persisted like the tab, sliders and location — a reload shouldn't reset
+  // the metric selection while remembering everything else.
+  const [active, setActive] = usePersistentState('metrics', { temp: true, ah: true, wind: true, csun: true, clouds: true })
   const toggle = key => setActive(a => ({ ...a, [key]: !a[key] }))
 
   const grid = wxMeta?.grid
@@ -1114,10 +1188,15 @@ function FeltTab({ outTemp, outRH, hours, wxMeta, gridPlace, lat, lon, selTs, se
   // hourly data is only exact on the hour) so the headline value, its air-temp
   // baseline, the Schwüle dew point and the graph readout all agree. Uses the
   // same nowReading() source as the Lüften tab's Aussen inputs.
+  // Before the forecast arrives, the sliders' persisted values are the only
+  // stand-in — but NOT when the user has manually overridden them in the
+  // Lüften tab for a what-if scenario: presenting e.g. an experimental -20°C
+  // as the real outdoor temperature would be plain wrong. Show a placeholder
+  // until real data lands instead.
   const nv      = nowReading(hours)
-  const airTemp = nv ? nv.temp     : outTemp
-  const airRH   = nv ? nv.humidity : outRH
-  const dp      = dewPoint(airTemp, airRH)
+  const airTemp = nv ? nv.temp     : (outManual ? null : outTemp)
+  const airRH   = nv ? nv.humidity : (outManual ? null : outRH)
+  const dp      = airTemp != null ? dewPoint(airTemp, airRH) : null
 
   const nowPoint = (nowIdx != null && feltDef.show(active))
     ? interpPoint(
@@ -1265,7 +1344,7 @@ function LueftenTab({
         </summary>
         <div className="section-body">
           <Slider label="Temperatur"       value={inTemp} onChange={setInTemp} min={10} max={40}  step={0.5} unit="°C" />
-          <Slider label="Luftfeuchtigkeit" value={inRH}   onChange={setInRH}   min={0}  max={100} step={1}   unit="%" />
+          <Slider label="Luftfeuchtigkeit" value={inRH}   onChange={setInRH}   min={1}  max={100} step={1}   unit="%" />
         </div>
       </details>
 
@@ -1290,7 +1369,7 @@ function LueftenTab({
             </button>
           )}
           <Slider label="Temperatur"       value={outTemp} onChange={setOutTempManual} min={-30} max={50}  step={0.5} unit="°C" />
-          <Slider label="Luftfeuchtigkeit" value={outRH}   onChange={setOutRHManual}   min={0}   max={100} step={1}   unit="%" />
+          <Slider label="Luftfeuchtigkeit" value={outRH}   onChange={setOutRHManual}   min={1}   max={100} step={1}   unit="%" />
         </div>
       </details>
 
@@ -1416,7 +1495,9 @@ export default function App() {
         try {
           const w = await fetchCurrentWeather(coords.latitude, coords.longitude)
           applyWeather(w)
-          fetchHourlyForecast(coords.latitude, coords.longitude).then(setHours).catch(() => {})
+          // A failed hourly fetch must not go silent: the location name would
+          // update while the graph kept showing the previous place's forecast.
+          fetchHourlyForecast(coords.latitude, coords.longitude).then(setHours).catch(() => setGeoStatus('error'))
           const name = await reverseGeocode(coords.latitude, coords.longitude).catch(() => null)
           setGeoLocation({ lat: coords.latitude, lon: coords.longitude, name })
           setLocSource('gps')
@@ -1433,7 +1514,7 @@ export default function App() {
     try {
       const w = await fetchCurrentWeather(la, lo)
       applyWeather(w)
-      fetchHourlyForecast(la, lo).then(setHours).catch(() => {})
+      fetchHourlyForecast(la, lo).then(setHours).catch(() => setGeoStatus('error'))
       setGeoLocation({ lat: la, lon: lo, name })
       setGeoStatus('ok')
     } catch { setGeoStatus('error') }
@@ -1446,7 +1527,7 @@ export default function App() {
       if (!loc) { setGeoStatus('notfound'); return }
       const w = await fetchCurrentWeather(loc.lat, loc.lon)
       applyWeather(w)
-      fetchHourlyForecast(loc.lat, loc.lon).then(setHours).catch(() => {})
+      fetchHourlyForecast(loc.lat, loc.lon).then(setHours).catch(() => setGeoStatus('error'))
       setGeoLocation(loc)
       setLocSource('search')
       setGeoStatus('ok')
@@ -1554,6 +1635,7 @@ export default function App() {
           <FeltTab
             outTemp={outTemp}
             outRH={outRH}
+            outManual={outManual}
             hours={hours}
             wxMeta={geoStatus === 'ok' ? wxMeta : null}
             gridPlace={geoStatus === 'ok' ? gridPlace : null}

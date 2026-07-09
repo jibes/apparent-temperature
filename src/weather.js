@@ -170,8 +170,13 @@ export async function fetchHourlyForecast(lat, lon, futureHours = 384, pastHours
   }).filter(Boolean)
 
   // Keep `pastHours` before the current hour, then `futureHours` ahead.
+  // If every row is already in the past (stale response), anchor on the
+  // newest row rather than index 0 — same fallback as the app's own
+  // nowHourIndex, so both agree on which hour stands in for "now".
   const now = Date.now()
-  const nowIdx = Math.max(0, all.findIndex(e => e.ts + 3600000 > now))
+  if (!all.length) return all
+  const idx = all.findIndex(e => e.ts + 3600000 > now)
+  const nowIdx = idx === -1 ? all.length - 1 : idx
   const start = Math.max(0, nowIdx - pastHours)
   return all.slice(start, nowIdx + futureHours)
 }

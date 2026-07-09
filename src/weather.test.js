@@ -141,6 +141,27 @@ describe('fetchHourlyForecast (multi-model median)', () => {
     await expect(fetchHourlyForecast(0, 0)).rejects.toThrow(/500/)
   })
 
+  // REGRESSION: with a fully stale payload (every hour in the past) the
+  // "now" anchor used to fall back to index 0 — the OLDEST row — instead of
+  // the newest.
+  it('anchors on the newest hour when all data is in the past', async () => {
+    const base = Date.now() - 48 * 3600000
+    const times = Array.from({ length: 24 }, (_, i) => new Date(base + i * 3600000).toISOString())
+    const fill = v => times.map(() => v)
+    mockFetch({
+      hourly: {
+        time: times,
+        temperature_2m_icon_seamless: fill(20),
+        relative_humidity_2m_icon_seamless: fill(50),
+        wind_speed_10m_icon_seamless: fill(10),
+        shortwave_radiation_icon_seamless: fill(0),
+      },
+    })
+    const out = await fetchHourlyForecast(52, 13, 12, 2)
+    // last returned row must be the newest available one
+    expect(out[out.length - 1].ts).toBe(Date.parse(times[times.length - 1]))
+  })
+
   it('accepts an un-suffixed hourly block (regression)', async () => {
     const base = Date.now() - 3600000
     const times = Array.from({ length: 12 }, (_, i) => new Date(base + i * 3600000).toISOString())

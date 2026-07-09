@@ -17,9 +17,12 @@ export function vaporPressure(T, RH) {
 }
 
 // Dew point [°C] — inverse Magnus. Independent of C0 (it cancels), so the
-// result depends only on the (MA, MB) pair.
+// result depends only on the (MA, MB) pair. RH is floored just above zero:
+// at RH = 0 the log diverges (-Inf/Inf = NaN, which then poisons comparisons
+// like condensation risk); the floor keeps the limit behavior (a very low,
+// finite dew point) instead.
 export function dewPoint(T, RH) {
-  const lnE = Math.log(vaporPressure(T, RH) / C0)
+  const lnE = Math.log(vaporPressure(T, Math.max(RH, 0.1)) / C0)
   return (MB * lnE) / (MA - lnE)
 }
 

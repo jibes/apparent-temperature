@@ -27,6 +27,12 @@ describe('humidity formulas', () => {
   it('dew point equals air temp at 100% RH', () => {
     expect(dewPoint(15, 100)).toBeCloseTo(15, 4)
   })
+  // REGRESSION: RH = 0 used to produce NaN (log diverges), which then
+  // poisoned downstream comparisons like condensation risk.
+  it('dew point stays finite at RH = 0', () => {
+    expect(Number.isFinite(dewPoint(20, 0))).toBe(true)
+    expect(dewPoint(20, 0)).toBeLessThan(-40)
+  })
   it('absolute humidity at 20°C / 50% ≈ 8.6 g/m³', () => {
     expect(absoluteHumidity(20, 50)).toBeCloseTo(8.6, 1)
   })
