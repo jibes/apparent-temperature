@@ -1477,7 +1477,7 @@ function LueftenTab({
         <div className="vent-inputs-head">
           <span className="section-name">Innen</span>
           <span className="summary-chips">
-            <Chip cls="felt">gefühlt {fmt1(feltIn)}°C</Chip>
+            <Chip cls="felt">≈ {fmt1(feltIn)} °C</Chip>
           </span>
         </div>
         <div className="vent-inputs-body">
@@ -1486,26 +1486,29 @@ function LueftenTab({
         </div>
       </div>
 
-      <details className="section-card">
+      <details className={`section-card ${outManual ? 'card-manual' : ''}`}>
         <summary className="section-summary">
-          <span className="section-name">Aussen {outManual ? '· manuell' : '· live'}</span>
+          <span className="section-name">Aussen</span>
           <span className="summary-chips">
             <Chip>{outTemp}{' '}°C</Chip>
             <Chip>{outRH}{' '}%</Chip>
-            <Chip cls="felt">gefühlt {fmt1(feltOut)}°C</Chip>
+            <Chip cls="felt">≈ {fmt1(feltOut)} °C</Chip>
           </span>
         </summary>
         <div className="section-body">
-          {outManual && (
-            <button type="button" className="graph-import" onClick={onResetOutdoor}>
+          {/* Both actions are always present and just enable/disable — like
+              the graph's always-visible "Jetzt" button — so the panel height
+              never jumps as they'd otherwise appear/disappear. */}
+          <div className="vent-actions">
+            <button type="button" className="graph-import" onClick={onResetOutdoor} disabled={!outManual}>
               ↺ Zurück zu Live-Daten
             </button>
-          )}
-          {canImport && (
-            <button type="button" className="graph-import" onClick={importGraph}>
-              ⟳ Graphpunkt übernehmen ({graphPoint.label}: {fmt1(graphPoint.temp)} °C · {gpRH} %)
+            <button type="button" className="graph-import" onClick={importGraph} disabled={!canImport}>
+              {canImport
+                ? `⟳ Graphpunkt übernehmen (${graphPoint.label}: ${fmt1(graphPoint.temp)} °C · ${gpRH} %)`
+                : '⟳ Graphpunkt übernehmen'}
             </button>
-          )}
+          </div>
           <Slider label="Temperatur"       value={outTemp} onChange={setOutTempManual} min={-30} max={50}  step={0.5} unit="°C" />
           <Slider label="Luftfeuchtigkeit" value={outRH}   onChange={setOutRHManual}   min={1}   max={100} step={1}   unit="%" />
         </div>

@@ -168,6 +168,11 @@ body::-webkit-scrollbar-thumb:hover { background: var(--accent); }
   margin-bottom: 0.6rem;
   overflow: hidden;
 }
+/* Outdoor values are a manual what-if override (not live) — signalled by a
+   tinted border instead of a "· manuell" label, which cost header width and
+   pushed the felt chip out of the one-line row. The always-visible, now
+   enabled "Zurück zu Live-Daten" button inside confirms it. */
+.section-card.card-manual { border-color: #92400e; }
 
 .section-summary {
   display: flex;
@@ -178,6 +183,12 @@ body::-webkit-scrollbar-thumb:hover { background: var(--accent); }
   list-style: none;
   user-select: none;
   -webkit-tap-highlight-color: transparent;
+  /* One fixed row: the name stays put and the chips get the remaining width
+     and stay on one line (their own text never wraps), so a longer value or
+     the "· manuell" suffix can't push the header to two lines. */
+  min-height: 3rem;
+  flex-wrap: nowrap;
+  overflow: hidden;
 }
 .section-summary::-webkit-details-marker { display: none; }
 .section-summary::marker { display: none; }
@@ -209,8 +220,11 @@ body::-webkit-scrollbar-thumb:hover { background: var(--accent); }
 .summary-chips {
   display: flex;
   gap: 0.35rem;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
+  margin-left: auto;      /* push chips to the right edge, on one line */
+  overflow: hidden;
 }
+.summary-chips .chip { flex-shrink: 0; white-space: nowrap; }
 
 .chip {
   background: #1e2235;
@@ -311,10 +325,12 @@ body::-webkit-scrollbar-thumb:hover { background: var(--accent); }
   padding: 0.6rem 0.8rem;
   border-radius: var(--rs);
   margin-bottom: 0.6rem;
-  /* Reserve 3 text lines and clamp, so switching between the (longer)
-     "best window" message and the (shorter) neutral ones — or the data
-     loading in — never resizes this box. */
-  min-height: calc(3 * 0.8rem * 1.5 + 1.2rem);
+  /* Fixed at exactly 3 text lines (+ padding + border) and clamped to 3, so
+     switching between the longer "best window" message and the shorter
+     neutral/loading ones never resizes it. Must be a fixed height, not
+     min-height: a 3-line message is taller than the border-box a min-height
+     reserves, which was the residual few-px jump. */
+  height: calc(3 * 0.8rem * 1.5 + 1.2rem + 2px);
   display: -webkit-box;
   -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
@@ -461,11 +477,17 @@ input[type='range'] {
   color: var(--text);
 }
 
-/* Import current graph selection into the outdoor sliders */
+/* Outdoor action buttons (reset to live / import graph point). Always
+   present, so they live in a fixed row and just enable/disable. */
+.vent-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin-bottom: 0.7rem;
+}
 .graph-import {
   display: block;
   width: 100%;
-  margin-bottom: 0.7rem;
   padding: 0.5rem 0.7rem;
   background: #2a2f55;
   border: 1px solid var(--accent);
@@ -474,9 +496,22 @@ input[type='range'] {
   font-size: 0.76rem;
   font-weight: 600;
   cursor: pointer;
-  transition: background 0.15s, opacity 0.15s;
+  transition: background 0.15s, opacity 0.15s, border-color 0.15s;
+  /* One line always (the import label carries a variable-length point
+     description) so a button never wraps to two lines and shifts things. */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
-.graph-import:hover { background: #343a68; }
+.graph-import:hover:not(:disabled) { background: #343a68; }
+/* Deactivated, not hidden — same idea as the graph's greyed-out Jetzt
+   button when it's not live: visible but clearly inert. */
+.graph-import:disabled {
+  opacity: 0.4;
+  cursor: default;
+  border-color: var(--border);
+  color: var(--muted);
+}
 
 /* ── Top: single headline "Gefühlt" value, borderless ── */
 .felt-top {
