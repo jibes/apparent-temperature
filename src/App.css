@@ -805,7 +805,7 @@ input[type='range'] {
   background: #1e2235;
   border-radius: var(--rs);
 }
-.fc-readout-skeleton { height: 106px; margin: 0.5rem 0 0.4rem; }
+.fc-readout-skeleton { height: 106.4px; margin: 0.5rem 0 0.4rem; }
 .fc-loading { color: var(--muted); font-size: 0.8rem; }
 /* Timeline strip placeholder while the forecast loads on the Lüften tab. */
 .vt-strip-skeleton { background: #1e2235; }
