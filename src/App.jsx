@@ -512,6 +512,16 @@ function buildBandPath(points, x, yf) {
   return `${up}${dn}Z`
 }
 
+// Static explainer under the chart — a constant so the load skeleton can
+// reserve its exact height (it renders the same text), keeping the forecast
+// box the same size before and after data arrives.
+const FORECAST_NOTE = (
+  <>
+    Basiswerte (gestrichelt) an/aus – abgeleitete Größen (durchgezogen: rel. Feuchte, effektive Sonne, Gefühlt) erscheinen automatisch.
+    {' '}„Gefühlt“ erscheint ab Lufttemp. + einem Faktor (Feuchte, Wind oder Sonne) und bezieht nur die aktiven Faktoren ein (ohne Feuchte-Wahl: neutrale 50 %). Die Linienstärke wächst mit der Zahl einfliessender Grössen. Gleiche Einheiten teilen sich eine Skala (direkt vergleichbar). Dunkle Bänder = Nacht. Tippen wählt einen Zeitpunkt; Legende antippen hebt eine Größe hervor; „Spanne“ blendet die Modell-Spanne ein.
+  </>
+)
+
 // Multi-day forecast chart. BASE inputs are toggled from the shared selector
 // above (same `active` state that drives the current-value readout); DERIVED
 // outputs appear when their inputs are active. Same units share one scale.
@@ -639,7 +649,21 @@ function ForecastChart({ hours, lat, lon, active, selTs, setSelTs, visible }) {
     }
   }, [series, isolated])
 
-  if (!series) return null
+  // Before data arrives, hold the box at the same height it will have once
+  // loaded (fixed-height plot + reserved readout + the real note) so the
+  // chart doesn't pop in and shove everything below it down.
+  if (!series) {
+    return (
+      <div className="forecast" ref={wrapRef}>
+        <div className="forecast-head">
+          <span className="section-name muted">Vorschau</span>
+        </div>
+        <div className="fc-plot-skeleton"><span className="fc-loading">Vorschau lädt…</span></div>
+        <div className="fc-readout-skeleton" />
+        <p className="forecast-note">{FORECAST_NOTE}</p>
+      </div>
+    )
+  }
 
   // Groups each derived value under its base (rh->ah, effsun->csun, felt->temp)
   // for the legend's 2-column layout and the tap-to-isolate highlight below.
@@ -1023,7 +1047,7 @@ function ForecastChart({ hours, lat, lon, active, selTs, setSelTs, visible }) {
       <div className="fc-readout">
         <div className="fc-rtime">{dateStr} {hhmm}</div>
         <div className="fc-rlist">
-          {legendGroups.map((g, gi) => {
+          {(() => {
             const row = s => {
               const p = pointAt(s); if (!p) return null
               const f = v => (s.dp ? v.toFixed(s.dp) : String(Math.round(v)))
@@ -1040,24 +1064,32 @@ function ForecastChart({ hours, lat, lon, active, selTs, setSelTs, visible }) {
                 </div>
               )
             }
-            return (
+            const groupEl = (g, gi) => (
               <div key={g.base ? g.base.key : `orphans${gi}`} className="fc-rgroup">
                 {g.base && row(g.base)}
                 {g.children.length > 0 && (
-                  <div className="fc-rgroup-children">
-                    {g.children.map(d => row(d))}
-                  </div>
+                  <div className="fc-rgroup-children">{g.children.map(d => row(d))}</div>
                 )}
               </div>
             )
-          })}
+            // Explicit, deterministic two-column balance (greedy: each group to
+            // the currently-shorter column). CSS multicolumn balanced
+            // unpredictably at narrow widths, so the box height wasn't stable;
+            // here the taller column is always ≤ half the rows, exactly what
+            // the reserved min-height is sized for.
+            const cols = [[], []]
+            const load = [0, 0]
+            legendGroups.forEach((g, gi) => {
+              const rows = 1 + g.children.length
+              const c = load[0] <= load[1] ? 0 : 1
+              cols[c].push(groupEl(g, gi)); load[c] += rows
+            })
+            return cols.map((col, ci) => <div key={ci} className="fc-rcol">{col}</div>)
+          })()}
         </div>
       </div>
 
-      <p className="forecast-note">
-        Basiswerte (gestrichelt) an/aus – abgeleitete Größen (durchgezogen: rel. Feuchte, effektive Sonne, Gefühlt) erscheinen automatisch.
-        {' '}„Gefühlt“ erscheint ab Lufttemp. + einem Faktor (Feuchte, Wind oder Sonne) und bezieht nur die aktiven Faktoren ein (ohne Feuchte-Wahl: neutrale 50 %). Die Linienstärke wächst mit der Zahl einfliessender Grössen. Gleiche Einheiten teilen sich eine Skala (direkt vergleichbar). Dunkle Bänder = Nacht. Tippen wählt einen Zeitpunkt; Legende antippen hebt eine Größe hervor; „Spanne“ blendet die Modell-Spanne ein.
-      </p>
+      <p className="forecast-note">{FORECAST_NOTE}</p>
     </div>
   )
 }
@@ -1379,18 +1411,23 @@ function LueftenTab({
   const canImport = graphPoint && (gpTemp !== outTemp || gpRH !== outRH)
   const importGraph = () => { setOutTempManual(gpTemp); setOutRHManual(gpRH) }
 
-  // What opening the windows would actually DO, as outcome chips: moisture
-  // and heat each get one, using the same ±thresholds as the verdict logic.
+  // What opening the windows would actually DO, as outcome chips. Capped at
+  // two (moisture + heat) so the chip area stays within its reserved height:
+  // condensation dominates everything else, and "manuelle Aussenwerte" lives
+  // in the Aussen header, not here.
   const a = ventilationAssessment(inTemp, inRH, outTemp, outRH)
   const effects = []
-  if (Math.abs(a.deltaAH) >= 0.3) {
-    effects.push({ text: `Feuchte ${a.deltaAH < 0 ? '↓' : '↑'} ${fmt1(Math.abs(a.deltaAH))} g/m³`, cls: a.deltaAH < 0 ? 'good' : 'bad' })
+  if (a.condensationRisk) {
+    effects.push({ text: '⚠ Kondensationsgefahr', cls: 'bad' })
+  } else {
+    if (Math.abs(a.deltaAH) >= 0.3) {
+      effects.push({ text: `Feuchte ${a.deltaAH < 0 ? '↓' : '↑'} ${fmt1(Math.abs(a.deltaAH))} g/m³`, cls: a.deltaAH < 0 ? 'good' : 'bad' })
+    }
+    if (Math.abs(a.deltaH) >= 0.5) {
+      effects.push({ text: `Wärmelast ${a.deltaH < 0 ? '↓' : '↑'} ${fmt1(Math.abs(a.deltaH))} kJ/kg`, cls: a.deltaH < 0 ? 'good' : 'bad' })
+    }
+    if (!effects.length) effects.push({ text: 'nur Frischluft (CO₂)', cls: 'neutral' })
   }
-  if (Math.abs(a.deltaH) >= 0.5) {
-    effects.push({ text: `Wärmelast ${a.deltaH < 0 ? '↓' : '↑'} ${fmt1(Math.abs(a.deltaH))} kJ/kg`, cls: a.deltaH < 0 ? 'good' : 'bad' })
-  }
-  if (a.condensationRisk) effects.push({ text: '⚠ Kondensationsgefahr', cls: 'bad' })
-  if (!effects.length) effects.push({ text: 'nur Frischluft (CO₂)', cls: 'neutral' })
 
   const hero = VENT_HERO[verdict.short] ?? { title: verdict.short, icon: '' }
 
@@ -1404,15 +1441,22 @@ function LueftenTab({
           {effects.map(e => (
             <span key={e.text} className={`verdict-chip ${e.cls}`}>{e.text}</span>
           ))}
-          {outManual && <span className="verdict-chip warn">manuelle Aussenwerte</span>}
         </div>
       </div>
 
-      {/* 2 — IF NOT NOW, WHEN? Hour strip beats a single text line. */}
-      {hours && (
-        <div className="section-card vent-when">
-          <VentTimeline hours={hours} Tin={inTemp} RHin={inRH} win={win} />
-          {win
+      {/* 2 — IF NOT NOW, WHEN? Hour strip beats a single text line. Always
+          rendered (skeleton while the forecast loads) so it doesn't pop in. */}
+      <div className="section-card vent-when">
+        {hours
+          ? <VentTimeline hours={hours} Tin={inTemp} RHin={inRH} win={win} />
+          : <>
+              <div className="vt-title section-name muted">Nächste 24 h</div>
+              <div className="vt-strip vt-strip-skeleton" />
+              <div className="vt-labels" />
+            </>}
+        {!hours
+          ? <p className="vent-window neutral">Vorschau lädt…</p>
+          : win
             ? <p className="vent-window good">
                 🪟 Bestes Fenster: <strong>{fmtSlot(win.start, win.end)}</strong> –
                 {' '}bringt das Raumklima näher an den Wohlfühlbereich (~20–24°C, 40–60%).
@@ -1424,8 +1468,7 @@ function LueftenTab({
               : <p className="vent-window neutral">
                   In den nächsten 24 h bringt die Aussenluft das Raumklima dem Wohlfühlbereich nicht näher (z.&nbsp;B. im Winter zu kalt).
                 </p>}
-        </div>
-      )}
+      </div>
 
       {/* 3 — THE INPUTS. Indoor is the only thing the app can't know — always
           visible, no collapsible to hunt through. Outdoor is live data with a

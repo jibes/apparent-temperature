@@ -69,6 +69,9 @@ body::-webkit-scrollbar-thumb:hover { background: var(--accent); }
   gap: 0.35rem;
   padding: 0.55rem 0.6rem;
   border-top: 1px solid var(--border);
+  /* Fixed row height so a longer location name, a status change, or the
+     search field swapping in never changes the bar's height. */
+  height: 3rem;
 }
 .geo-ok {
   font-size: 0.78rem;
@@ -78,6 +81,11 @@ body::-webkit-scrollbar-thumb:hover { background: var(--accent); }
   border: 1px solid #166534;
   padding: 0.22rem 0.7rem;
   border-radius: 999px;
+  /* One line only — a long place name shouldn't wrap and grow the bar. */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
 }
 .geo-msg {
   font-size: 0.78rem;
@@ -242,12 +250,24 @@ body::-webkit-scrollbar-thumb:hover { background: var(--accent); }
   color: var(--muted);
   margin: 0.3rem 0 0;
   line-height: 1.45;
+  /* Reserve exactly 3 lines and clamp to them, so a shorter or longer
+     reason (they vary with the verdict) never resizes the hero. */
+  height: calc(3 * 0.78rem * 1.45);
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 .vh-chips {
   display: flex;
   gap: 0.35rem;
   flex-wrap: wrap;
+  align-content: flex-start;
   margin-top: 0.55rem;
+  /* Reserve 2 rows (the realistic max: moisture + heat, which wrap at
+     phone width) so the chip count changing never resizes the hero. */
+  height: 3.3rem;
+  overflow: hidden;
 }
 
 .vent-when { padding: 0.75rem 1rem 0.6rem; }
@@ -267,7 +287,8 @@ body::-webkit-scrollbar-thumb:hover { background: var(--accent); }
 .vt-cell.bad     { background: #b91c1c; }
 /* the bestVentWindow run pops out of the strip */
 .vt-cell.best    { opacity: 1; box-shadow: inset 0 -3px 0 #fff9; }
-.vt-labels { display: flex; margin-top: 0.15rem; }
+/* Fixed height so the empty skeleton label row matches the real one. */
+.vt-labels { display: flex; margin-top: 0.15rem; height: 0.75rem; }
 .vt-lab {
   flex: 1;
   font-size: 0.6rem;
@@ -290,6 +311,14 @@ body::-webkit-scrollbar-thumb:hover { background: var(--accent); }
   padding: 0.6rem 0.8rem;
   border-radius: var(--rs);
   margin-bottom: 0.6rem;
+  /* Reserve 3 text lines and clamp, so switching between the (longer)
+     "best window" message and the (shorter) neutral ones — or the data
+     loading in — never resizes this box. */
+  min-height: calc(3 * 0.8rem * 1.5 + 1.2rem);
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 .vent-window.good    { background: #14532d33; color: #86efac; border: 1px solid #166534; }
 .vent-window.neutral { background: #1e2235;   color: var(--muted); border: 1px solid var(--border); }
@@ -459,10 +488,11 @@ input[type='range'] {
      varies (fallback vs. full state, Schwüle on/off, wrapping) then just
      centers within this space instead of growing/shrinking it and pushing
      the metric tiles and graph below up and down as it changes. */
-  min-height: 8rem;
+  height: 8rem;                 /* fixed, not min: never grows/shrinks */
   display: flex;
   flex-direction: column;
   justify-content: center;
+  overflow: hidden;
 }
 .felt-now .ap-val {
   font-size: 2.9rem;
@@ -499,6 +529,9 @@ input[type='range'] {
   justify-content: space-between;
   padding-right: 0.4rem;
   margin-bottom: 0.5rem;
+  /* Fixed so the load skeleton (text-only head) and the real head (with the
+     taller Spanne/Jetzt buttons) are the same height — no shift on load. */
+  min-height: 1.75rem;
 }
 .forecast-head-actions {
   display: flex;
@@ -704,22 +737,24 @@ input[type='range'] {
   margin-bottom: 0.3rem;
 }
 .fc-rlist {
-  /* 2 columns, filled top-to-bottom then wrapping to the next column —
-     roughly halves the list's height vs. a single column. */
-  column-count: 2;
-  column-gap: 1.1rem;
+  /* Two explicit, JS-balanced columns (see the greedy split in App.jsx) —
+     deterministic, unlike CSS multicolumn which balanced unpredictably at
+     narrow widths. Reserve the 4-row maximum (all metrics on = 8 rows split
+     4/4) so toggling metrics never grows/shrinks the box and pushes what's
+     below it: the height is content-independent for a given width. */
+  display: flex;
+  gap: 1.1rem;
+  align-items: flex-start;
+  min-height: 4.5rem;
 }
+.fc-rcol { display: flex; flex-direction: column; }
 .fc-rgroup {
-  /* Keeps a base row + its derived children together as one unit rather
-     than letting the column break split them apart. */
-  break-inside: avoid-column;
   margin-bottom: 0.15rem;
 }
 .fc-rrow {
   display: flex;
   align-items: center;
   gap: 0.35rem;
-  break-inside: avoid-column;
   cursor: pointer;
   border-radius: 5px;
   padding: 0.05rem 0.2rem;
@@ -758,6 +793,22 @@ input[type='range'] {
   color: var(--muted);
   margin-top: 0.4rem;
 }
+
+/* Loading placeholders — reserve the exact same fixed pieces (260px plot,
+   the readout's reserved height, the real note markup) so the forecast box
+   is the same height before and after data arrives: no pop-in shift. */
+.fc-plot-skeleton {
+  height: 260px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #1e2235;
+  border-radius: var(--rs);
+}
+.fc-readout-skeleton { height: 106px; margin: 0.5rem 0 0.4rem; }
+.fc-loading { color: var(--muted); font-size: 0.8rem; }
+/* Timeline strip placeholder while the forecast loads on the Lüften tab. */
+.vt-strip-skeleton { background: #1e2235; }
 
 /* ── Ventilation table ── */
 .vent-table { padding-top: 0.5rem; }
