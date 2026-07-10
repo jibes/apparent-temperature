@@ -114,9 +114,42 @@ function ventVerdict(Tin, RHin, Tout, RHout) {
   return                              { short: 'Nicht empfohlen',cls: 'bad' }
 }
 
-// Slider with pointer capture + touch resistance
-
+// Slider. A native range input jumps to wherever a finger first lands and
+// commits that on the tap — so an accidental tap, or a tap that turns into a
+// vertical page scroll, would change the value. On TOUCH we therefore ignore
+// changes until the finger has actually dragged sideways past a small
+// threshold (and revert the tap-jump the browser applied to the DOM),
+// capturing the pointer only once it's a real drag so vertical scrolling
+// (touch-action: pan-y) still works. Mouse/keyboard keep their normal
+// behaviour: desktop click-to-set and arrow keys commit immediately.
+const SLIDER_DRAG_PX = 6
 function Slider({ label, value, onChange, min, max, step, unit }) {
+  const ref = useRef()
+  const g = useRef({ down: false, moved: false, startX: 0, startVal: value, touch: false, pid: null })
+
+  function onDown(e) {
+    g.current = { down: true, moved: false, startX: e.clientX, startVal: value, touch: e.pointerType !== 'mouse', pid: e.pointerId }
+    // Mouse captures immediately (click-to-set/drag); touch waits until it's a
+    // real horizontal drag so a vertical scroll gesture isn't hijacked.
+    if (e.pointerType === 'mouse') e.currentTarget.setPointerCapture(e.pointerId)
+  }
+  function onMove(e) {
+    const s = g.current
+    if (!s.down || s.moved) return
+    if (Math.abs(e.clientX - s.startX) > SLIDER_DRAG_PX) {
+      s.moved = true
+      if (s.touch && ref.current) { try { ref.current.setPointerCapture(s.pid) } catch {} }
+    }
+  }
+  function onChangeEv(e) {
+    const s = g.current
+    // Touch, finger down but not yet a real drag → this is the tap-jump (or a
+    // scroll start): swallow it and undo the DOM change the browser made.
+    if (s.touch && s.down && !s.moved) { e.target.value = String(s.startVal); return }
+    onChange(Number(e.target.value))
+  }
+  function onUp() { g.current.down = false }
+
   return (
     <div className="control">
       <div className="control-header">
@@ -124,10 +157,15 @@ function Slider({ label, value, onChange, min, max, step, unit }) {
         <span className="value-badge">{value}{' '}{unit}</span>
       </div>
       <input
+        ref={ref}
         type="range"
         min={min} max={max} step={step} value={value}
-        onChange={e => onChange(Number(e.target.value))}
-        onPointerDown={e => e.currentTarget.setPointerCapture(e.pointerId)}
+        onChange={onChangeEv}
+        onPointerDown={onDown}
+        onPointerMove={onMove}
+        onPointerUp={onUp}
+        onPointerCancel={onUp}
+        onLostPointerCapture={onUp}
         style={{ touchAction: 'pan-y' }}
       />
     </div>
