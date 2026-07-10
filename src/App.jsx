@@ -767,7 +767,14 @@ function ForecastChart({ hours, lat, lon, active, selTs, setSelTs, visible }) {
   const selectingNow = selHourIdx === -1
   const si    = selectingNow ? nowIdx : selHourIdx
   const selX  = selectingNow ? xNow : x(si)
-  const selDate = selectingNow ? new Date() : hours[si].time
+  // Place-local wall clock, not the phone's: in live mode interpolate "now"
+  // from the forecast's own hourly wall-clock (hours[].time carries the
+  // location's local time, preserved digit-for-digit) by the same nowFrac
+  // the Jetzt line uses — so the legend reads the selected location's local
+  // time, matching the graph's hour labels, even in another timezone.
+  const selDate = selectingNow
+    ? new Date(hours[nowIdx].time.getTime() + nowFrac * 3600000)
+    : hours[si].time
   const dateStr = `${WEEKDAY[selDate.getDay()]} ${selDate.getDate()}.${selDate.getMonth() + 1}.`
   const hhmm = selectingNow
     ? `${String(selDate.getHours()).padStart(2, '0')}:${String(selDate.getMinutes()).padStart(2, '0')}`
