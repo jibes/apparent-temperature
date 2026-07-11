@@ -100,8 +100,8 @@ const TEMP_COLOR = {
   cool: '#a5b4fc', cold: '#7dd3fc', 'very-cold': '#bae6fd',
 }
 
-function ventVerdict(Tin, RHin, Tout, RHout) {
-  const a = ventilationAssessment(Tin, RHin, Tout, RHout)
+function ventVerdict(Tin, RHin, Tout, RHout, elevM = 0) {
+  const a = ventilationAssessment(Tin, RHin, Tout, RHout, elevM)
   const dry  = a.deltaAH < -0.3
   const wet  = a.deltaAH >  0.3
   const cool = a.deltaH  < -0.5
@@ -225,8 +225,8 @@ function DeltaRow({ label, inVal, outVal, unit, info }) {
 
 // One plain-language sentence explaining WHY the verdict is what it is —
 // shown in the hero banner, not buried under the numbers.
-function ventReason(Tin, RHin, Tout, RHout) {
-  const a   = ventilationAssessment(Tin, RHin, Tout, RHout)
+function ventReason(Tin, RHin, Tout, RHout, elevM = 0) {
+  const a   = ventilationAssessment(Tin, RHin, Tout, RHout, elevM)
   const dpO = dewPoint(Tout, RHout)
   const ahI = absoluteHumidity(Tin, RHin)
   const ahO = absoluteHumidity(Tout, RHout)
@@ -247,8 +247,8 @@ function ventReason(Tin, RHin, Tout, RHout) {
 }
 
 // Pure numbers ("nerd data") — the explaining sentence lives in the hero.
-function VentTable({ Tin, RHin, Tout, RHout }) {
-  const a   = ventilationAssessment(Tin, RHin, Tout, RHout)
+function VentTable({ Tin, RHin, Tout, RHout, elevM = 0 }) {
+  const a   = ventilationAssessment(Tin, RHin, Tout, RHout, elevM)
   const dpI = dewPoint(Tin, RHin)
   const dpO = dewPoint(Tout, RHout)
   const ahI = absoluteHumidity(Tin, RHin)
@@ -371,7 +371,11 @@ const WEEKDAY = ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa']
 // shortwave_radiation_instant used for "real" sun, so both (and the instant
 // temp/RH/wind) describe the same moment T. No interval/instant mismatch.
 function clearSkyAt(h, ctx) {
-  return clearSkyGHI(solarElevation(ctx.lat, ctx.lon, new Date(h.ts)))
+  // Altitude-corrected: thinner air above the site attenuates less. The
+  // elevation comes from the model grid cell (the same one the temperature
+  // describes), folded in unconditionally — a property of the place, like
+  // lat/lon, not a user-toggleable factor.
+  return clearSkyGHI(solarElevation(ctx.lat, ctx.lon, new Date(h.ts)), ctx.elevation ?? 0)
 }
 
 // Selectable forecast metrics. `dual` shows sun+shade felt temp; `at(h,ctx)`
@@ -563,7 +567,7 @@ const FORECAST_NOTE = (
 // Multi-day forecast chart. BASE inputs are toggled from the shared selector
 // above (same `active` state that drives the current-value readout); DERIVED
 // outputs appear when their inputs are active. Same units share one scale.
-function ForecastChart({ hours, lat, lon, active, selTs, setSelTs, visible }) {
+function ForecastChart({ hours, lat, lon, elevation, active, selTs, setSelTs, visible }) {
   const wrapRef = useRef()
   const svgRef = useRef()
   const scrollRef = useRef()
@@ -642,8 +646,8 @@ function ForecastChart({ hours, lat, lon, active, selTs, setSelTs, visible }) {
   const activeKey = Object.keys(active).filter(k => active[k]).sort().join(',')
   const series = useMemo(() => {
     if (!hours || !hours.length) return null
-    return buildSeries(hours, { lat, lon }, active)
-  }, [hours, activeKey, lat, lon])
+    return buildSeries(hours, { lat, lon, elevation }, active)
+  }, [hours, activeKey, lat, lon, elevation])
 
   // The expensive per-render pieces — SVG path strings (every series × ~390
   // points) and the night bands (~390 solar-elevation evaluations) — are
@@ -1263,6 +1267,10 @@ function FeltTab({ outTemp, outRH, outManual, hours, wxMeta, gridPlace, lat, lon
   const toggle = key => setActive(a => ({ ...a, [key]: !a[key] }))
 
   const grid = wxMeta?.grid
+  // Site elevation (from the model grid cell — the same terrain the
+  // temperature data describes). Folded into the clear-sky sun model
+  // unconditionally: altitude is intrinsic to the place, like lat/lon.
+  const elevation = grid?.elevation ?? 0
   const feltDef = DERIVED.find(d => d.felt)
   const nowIdx  = hours && hours.length ? nowHourIndex(hours) : null
 
@@ -1282,8 +1290,8 @@ function FeltTab({ outTemp, outRH, outManual, hours, wxMeta, gridPlace, lat, lon
 
   const nowPoint = (nowIdx != null && feltDef.show(active))
     ? interpPoint(
-        feltPoints([hours[nowIdx]], { lat, lon }, active)[0],
-        hours[nowIdx + 1] ? feltPoints([hours[nowIdx + 1]], { lat, lon }, active)[0] : null,
+        feltPoints([hours[nowIdx]], { lat, lon, elevation }, active)[0],
+        hours[nowIdx + 1] ? feltPoints([hours[nowIdx + 1]], { lat, lon, elevation }, active)[0] : null,
         nowFraction(hours, nowIdx)
       )
     : null
@@ -1297,7 +1305,7 @@ function FeltTab({ outTemp, outRH, outManual, hours, wxMeta, gridPlace, lat, lon
 
       <MetricToggles active={active} onToggle={toggle} />
 
-      <ForecastChart hours={hours} lat={lat} lon={lon} active={active}
+      <ForecastChart hours={hours} lat={lat} lon={lon} elevation={elevation} active={active}
         selTs={selTs} setSelTs={setSelTs} visible={visible} />
 
       <details className="section-card formula-card">
@@ -1307,6 +1315,7 @@ function FeltTab({ outTemp, outRH, outManual, hours, wxMeta, gridPlace, lat, lon
         <div className="section-body formula-body">
           <p><strong>UTCI</strong> – Bröde et al. (2012). Universeller thermischer Klimaindex: 210-Term-Polynom 6. Grades in Lufttemperatur, Windgeschwindigkeit, mittlerer Strahlungstemperatur und Dampfdruck. Windlimit: 0.5–17 m/s.</p>
           <p><strong>Schatten vs. Sonne</strong> – die beiden Karten zeigen die Spanne: Schatten ohne Strahlung (Tmrt = Luft), Sonne bei klarem Himmel. Das Klarhimmel-Maximum kommt aus dem Sonnenstand (NOAA-Algorithmus: Datum, Uhrzeit, Breiten- &amp; Längengrad) und dem Haurwitz-Modell – im Winter und abends schwächer, nachts null.</p>
+          <p><strong>Höhenlage</strong> – fliesst ohne Option immer ein, da sie zum Ort gehört wie Länge und Breite: Die Klarhimmel-Strahlung ist höhenkorrigiert (dünnere Atmosphäre → weniger Streuung und Absorption, empirisch ca. +8 % pro 1000 m), die Enthalpie im Lüften-Tab rechnet mit dem barometrischen Luftdruck der Gitterzellen-Höhe. Die Temperatur selbst ist bereits vom Wettermodell auf die Geländehöhe skaliert (~0.65 K/100 m).</p>
           <p><strong>Strahlungstemperatur</strong> – vereinfachte lineare Näherung <code>Tmrt = T + 0.025·I</code> aus der Globalstrahlung I [W/m²].</p>
           <p><strong>Magnus-Tetens</strong> (Alduchov & Eskridge 1996): <code>e_s = 6.1094·exp(17.625T / (243.04+T))</code>. Taupunkt durch Invertierung. Abs. Feuchte: <code>rho_w = 216.7·e / T_K</code>.</p>
 
@@ -1400,7 +1409,7 @@ const VENT_HERO = {
 // at a glance instead of a single text line. Each cell is colored by the
 // same ventVerdict the hero uses (with the forecast outdoor conditions), and
 // the best window found by bestVentWindow is emphasized.
-function VentTimeline({ hours, Tin, RHin, win }) {
+function VentTimeline({ hours, Tin, RHin, win, elevM = 0 }) {
   const now = Date.now()
   const fut = hours.filter(h => h.ts + 3600000 > now).slice(0, 24)
   if (!fut.length) return null
@@ -1410,7 +1419,7 @@ function VentTimeline({ hours, Tin, RHin, win }) {
       <div className="vt-title section-name muted">Nächste 24 h</div>
       <div className="vt-strip">
         {fut.map(h => {
-          const v = ventVerdict(Tin, RHin, h.temp, h.humidity)
+          const v = ventVerdict(Tin, RHin, h.temp, h.humidity, elevM)
           return (
             <div
               key={h.ts}
@@ -1433,9 +1442,9 @@ function VentTimeline({ hours, Tin, RHin, win }) {
 
 function LueftenTab({
   inTemp, setInTemp, inRH, setInRH, outTemp, setOutTemp, outRH, setOutRH,
-  setOutManual, outManual, onResetOutdoor, hours, graphPoint,
+  setOutManual, outManual, onResetOutdoor, hours, graphPoint, elevation = 0,
 }) {
-  const verdict   = ventVerdict(inTemp, inRH, outTemp, outRH)
+  const verdict   = ventVerdict(inTemp, inRH, outTemp, outRH, elevation)
   const feltIn    = indoorApparentTemp(inTemp, inRH).value
   const feltOut   = indoorApparentTemp(outTemp, outRH).value
   const win       = bestVentWindow(hours, inTemp, inRH)
@@ -1460,7 +1469,7 @@ function LueftenTab({
   // two (moisture + heat) so the chip area stays within its reserved height:
   // condensation dominates everything else, and "manuelle Aussenwerte" lives
   // in the Aussen header, not here.
-  const a = ventilationAssessment(inTemp, inRH, outTemp, outRH)
+  const a = ventilationAssessment(inTemp, inRH, outTemp, outRH, elevation)
   const effects = []
   if (a.condensationRisk) {
     effects.push({ text: '⚠ Kondensationsgefahr', cls: 'bad' })
@@ -1481,7 +1490,7 @@ function LueftenTab({
       {/* 1 — THE ANSWER. What the user came for, first and unmissable. */}
       <div className={`vent-hero ${verdict.cls}`}>
         <div className="vh-verdict">{hero.icon} {hero.title}</div>
-        <p className="vh-reason">{ventReason(inTemp, inRH, outTemp, outRH)}</p>
+        <p className="vh-reason">{ventReason(inTemp, inRH, outTemp, outRH, elevation)}</p>
         <div className="vh-chips">
           {effects.map(e => (
             <span key={e.text} className={`verdict-chip ${e.cls}`}>{e.text}</span>
@@ -1493,7 +1502,7 @@ function LueftenTab({
           rendered (skeleton while the forecast loads) so it doesn't pop in. */}
       <div className="section-card vent-when">
         {hours
-          ? <VentTimeline hours={hours} Tin={inTemp} RHin={inRH} win={win} />
+          ? <VentTimeline hours={hours} Tin={inTemp} RHin={inRH} win={win} elevM={elevation} />
           : <>
               <div className="vt-title section-name muted">Nächste 24 h</div>
               <div className="vt-strip vt-strip-skeleton" />
@@ -1565,7 +1574,7 @@ function LueftenTab({
           <span className="section-name muted">Details (Physik)</span>
         </summary>
         <div className="section-body">
-          <VentTable Tin={inTemp} RHin={inRH} Tout={outTemp} RHout={outRH} />
+          <VentTable Tin={inTemp} RHin={inRH} Tout={outTemp} RHout={outRH} elevM={elevation} />
           <p className="vent-note">
             Wind und Sonne fliessen hier bewusst nicht ein: Sie ändern nicht, <em>ob</em> die
             Aussenluft trockener oder kühler ist. Wind beschleunigt zwar den Luftaustausch
@@ -1829,6 +1838,7 @@ export default function App() {
             onResetOutdoor={resetOutdoorToLive}
             hours={geoStatus === 'ok' ? hours : null}
             graphPoint={graphPoint}
+            elevation={wxMeta?.grid?.elevation ?? 0}
           />
         </div>
       </main>

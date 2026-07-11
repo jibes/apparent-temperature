@@ -33,18 +33,28 @@ export function absoluteHumidity(T, RH) {
   return (216.7 * vaporPressure(T, RH)) / (T + 273.15)
 }
 
-// Humidity mixing ratio W [kg_water / kg_dry_air]
-// W = 0.622 · e / (p − e), standard atmosphere p = 1013.25 hPa
-function mixingRatio(T, RH) {
-  const e = vaporPressure(T, RH)
-  return (0.622 * e) / (1013.25 - e)
+// Barometric pressure [hPa] at elevation [m] — isothermal barometric formula
+// with the standard 8434 m scale height. Elevation is a property of the
+// place (like lat/lon), so callers pass it through unconditionally; 0 m
+// (sea-level standard atmosphere) is the neutral default.
+const P0 = 1013.25 // hPa, standard sea-level pressure
+export function pressureAtElevation(m = 0) {
+  return P0 * Math.exp(-Math.max(0, m) / 8434)
 }
 
-// Specific enthalpy of moist air [kJ / kg_dry_air]
+// Humidity mixing ratio W [kg_water / kg_dry_air]
+// W = 0.622 · e / (p − e) at site pressure p (thinner air at altitude holds
+// more water per kg of dry air for the same vapor pressure).
+function mixingRatio(T, RH, p = P0) {
+  const e = vaporPressure(T, RH)
+  return (0.622 * e) / (p - e)
+}
+
+// Specific enthalpy of moist air [kJ / kg_dry_air] at site pressure
 // h = cp_a·T + W·(L₀ + cp_v·T)
 // cp_a = 1.006 kJ/(kg·K), L₀ = 2501 kJ/kg (latent heat at 0°C), cp_v = 1.86 kJ/(kg·K)
-export function specificEnthalpy(T, RH) {
-  const W = mixingRatio(T, RH)
+export function specificEnthalpy(T, RH, p = P0) {
+  const W = mixingRatio(T, RH, p)
   return 1.006 * T + W * (2501 + 1.86 * T)
 }
 
@@ -149,19 +159,28 @@ export function solarElevation(lat, lon, date = new Date()) {
 }
 
 // Clear-sky global horizontal irradiance [W/m²] from solar elevation
-// (Haurwitz model). Returns 0 when the sun is below the horizon.
-export function clearSkyGHI(elevDeg) {
+// (Haurwitz model), altitude-corrected. Observed clear-sky GHI rises by
+// roughly +8% per 1000 m (less Rayleigh scattering, aerosol and water
+// vapor below the site) — the standard empirical gradient, cf. the Laue
+// altitude term (0.14/km for direct-beam; global is about half that).
+// NOTE: Haurwitz's 0.057 exponent is an empirical curve-fit, NOT a true
+// optical depth — scaling it by site pressure (the physically "obvious"
+// approach) yields only ~1%/km, far below the observed gradient, so the
+// explicit gradient is used instead. Capped at 4 km, where the linear fit
+// stops being trustworthy. Returns 0 below the horizon.
+export function clearSkyGHI(elevDeg, elevationM = 0) {
   if (elevDeg <= 0) return 0
   const cosZ = Math.cos(((90 - elevDeg) * Math.PI) / 180)
   if (cosZ <= 0) return 0
-  return Math.max(0, 1098 * cosZ * Math.exp(-0.057 / cosZ))
+  const altFactor = 1 + 0.08 * Math.min(4, Math.max(0, elevationM) / 1000)
+  return Math.max(0, altFactor * 1098 * cosZ * Math.exp(-0.057 / cosZ))
 }
 
 // Current clear-sky ceiling [W/m²] for a place & instant — the strongest the
 // sun can get *right now*. Captures both season (declination) and time of day
 // (hour angle): low morning/evening sun is weak, night is zero.
-export function clearSkyMax(lat, lon = 10, date = new Date()) {
-  return clearSkyGHI(solarElevation(lat, lon, date))
+export function clearSkyMax(lat, lon = 10, date = new Date(), elevationM = 0) {
+  return clearSkyGHI(solarElevation(lat, lon, date), elevationM)
 }
 
 export function utci(Ta, RH, va_kmh, Tr = null) {
@@ -438,11 +457,14 @@ export function indoorApparentTemp(T, RH) {
 //   1. Moisture: absolute humidity comparison (primary mold/comfort signal)
 //   2. Thermal: specific enthalpy comparison (latent + sensible heat combined)
 //   3. Condensation risk: outdoor dew point > indoor surface temperature (proxy: T_in)
-export function ventilationAssessment(Tin, RHin, Tout, RHout) {
+// `elevationM` = site elevation; indoor and outdoor share it, so it enters
+// only through the enthalpy magnitudes (site pressure), never asymmetrically.
+export function ventilationAssessment(Tin, RHin, Tout, RHout, elevationM = 0) {
+  const p = pressureAtElevation(elevationM)
   const ahIn = absoluteHumidity(Tin, RHin)
   const ahOut = absoluteHumidity(Tout, RHout)
-  const hIn = specificEnthalpy(Tin, RHin)
-  const hOut = specificEnthalpy(Tout, RHout)
+  const hIn = specificEnthalpy(Tin, RHin, p)
+  const hOut = specificEnthalpy(Tout, RHout, p)
   const dpIn = dewPoint(Tin, RHin)
   const dpOut = dewPoint(Tout, RHout)
 

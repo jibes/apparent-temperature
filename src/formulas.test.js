@@ -3,7 +3,7 @@ import {
   saturationPressure, vaporPressure, dewPoint, absoluteHumidity,
   specificEnthalpy, heatIndex, windChill,
   utci, utciCategory, meanRadiantTemp, clearSkyMax,
-  solarElevation, clearSkyGHI,
+  solarElevation, clearSkyGHI, pressureAtElevation,
 } from './formulas.js'
 
 // ── Psychrometrics (exact, hand-verified) ──────────────────────────────────
@@ -38,6 +38,32 @@ describe('humidity formulas', () => {
   })
   it('specific enthalpy at 20°C / 50% ≈ 38.5 kJ/kg', () => {
     expect(specificEnthalpy(20, 50)).toBeCloseTo(38.5, 0)
+  })
+})
+
+// ── Elevation (intrinsic to the place, always folded in) ────────────────────
+
+describe('elevation corrections', () => {
+  it('barometric pressure: sea level 1013.25 hPa, ~899 hPa at 1000 m', () => {
+    expect(pressureAtElevation(0)).toBeCloseTo(1013.25, 2)
+    expect(pressureAtElevation(1000)).toBeCloseTo(1013.25 * Math.exp(-1000 / 8434), 2)
+    expect(pressureAtElevation(1000)).toBeGreaterThan(890)
+    expect(pressureAtElevation(1000)).toBeLessThan(910)
+  })
+  it('clear-sky GHI increases with altitude (thinner air, less extinction)', () => {
+    const sea = clearSkyGHI(45, 0)
+    const alps = clearSkyGHI(45, 1500)
+    expect(alps).toBeGreaterThan(sea)
+    // roughly +7–9% per km near the surface → 1500 m ≈ +8–14%
+    expect(alps / sea).toBeGreaterThan(1.05)
+    expect(alps / sea).toBeLessThan(1.2)
+  })
+  it('clear-sky GHI unchanged at sea level (default param)', () => {
+    expect(clearSkyGHI(45)).toBeCloseTo(clearSkyGHI(45, 0), 10)
+  })
+  it('enthalpy magnitude grows at altitude (more water per kg of thinner air)', () => {
+    const pAlt = pressureAtElevation(1500)
+    expect(specificEnthalpy(20, 50, pAlt)).toBeGreaterThan(specificEnthalpy(20, 50))
   })
 })
 
