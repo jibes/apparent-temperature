@@ -1667,12 +1667,17 @@ export default function App() {
     setOutManual(false)
   }
 
-  async function loadWeather() {
-    if (!navigator.geolocation) { setGeoStatus('denied'); return }
-    setGeoStatus('loading')
+  // `silent` = a background re-acquire (auto-refresh, or catching up on a
+  // position change after mount): don't flip the status chip to "wird
+  // ermittelt…" while data is showing, and if geolocation fails, keep
+  // whatever is on screen instead of downgrading to "nicht verfügbar" —
+  // a background failure shouldn't nuke a working display.
+  async function loadWeather(silent = false) {
+    if (!navigator.geolocation) { if (!silent) setGeoStatus('denied'); return }
+    if (!silent) setGeoStatus('loading')
     navigator.geolocation.getCurrentPosition(
       async ({ coords }) => {
-        setGeoStatus('locating')
+        if (!silent) setGeoStatus('locating')
         try {
           const w = await fetchCurrentWeather(coords.latitude, coords.longitude)
           applyWeather(w)
@@ -1683,9 +1688,9 @@ export default function App() {
           setGeoLocation({ lat: coords.latitude, lon: coords.longitude, name })
           setLocSource('gps')
           setGeoStatus('ok')
-        } catch { setGeoStatus('error') }
+        } catch { if (!silent) setGeoStatus('error') }
       },
-      () => setGeoStatus('denied')
+      () => { if (!silent) setGeoStatus('denied') }
     )
   }
 
@@ -1715,22 +1720,28 @@ export default function App() {
     } catch { setGeoStatus('error') }
   }
 
-  // Reload button: re-acquire GPS when in GPS mode; for a searched location
-  // just refetch its data without switching back to the device position.
-  function refresh() {
+  // Refresh: re-acquire the device position when the location came from
+  // location services (following the user as they move); for a searched
+  // location just refetch its data — never switch back to the device
+  // position uninvited. `silent` marks background refreshes (see loadWeather).
+  function refresh(silent = false) {
     if (locSource === 'search' && geoLocation?.lat != null) {
       refetchFor(geoLocation.lat, geoLocation.lon, geoLocation.name)
     } else {
-      loadWeather()
+      loadWeather(silent)
     }
   }
 
-  // On mount: if we have a saved location, refresh its weather silently
-  // (keeping persisted personal/indoor inputs); otherwise ask for GPS.
+  // On mount: if we have a saved location, refresh its weather immediately
+  // (fast first paint, keeping persisted personal/indoor inputs); when that
+  // location came from location services, ALSO silently re-acquire the real
+  // device position — the saved coords may be from wherever the app was last
+  // used, and GPS mode means "where I am", not "where I was".
   useEffect(() => {
     if (geoLocation && geoLocation.lat != null) {
       prefilledRef.current = true // don't overwrite restored indoor temp
       refetchFor(geoLocation.lat, geoLocation.lon, geoLocation.name)
+      if (locSource !== 'search') loadWeather(true)
     } else {
       loadWeather()
     }
@@ -1747,12 +1758,15 @@ export default function App() {
     const REFRESH_MS = 5 * 60000
     const id = setInterval(() => setNowTick(t => t + 1), 60000)
     const refreshId = setInterval(() => {
-      if (document.visibilityState === 'visible') refresh()
+      // Background refresh: silent, so the status chip doesn't flicker to
+      // "wird ermittelt…" every 5 minutes — in GPS mode this re-acquires the
+      // device position each time, so the app follows the user as they move.
+      if (document.visibilityState === 'visible') refresh(true)
     }, REFRESH_MS)
     function refreshIfStale() {
       if (document.visibilityState === 'visible' &&
           updatedAt && Date.now() - updatedAt > REFRESH_MS) {
-        refresh()
+        refresh(true)
       }
     }
     document.addEventListener('visibilitychange', refreshIfStale)
@@ -1803,7 +1817,7 @@ export default function App() {
           status={geoStatus}
           location={geoLocation}
           freshness={updatedAt ? agoLabel(updatedAt) : null}
-          onRefresh={refresh}
+          onRefresh={() => refresh(false)} /* explicit: the click event must not land in `silent` */
           onSearch={searchWeather}
           onLocate={loadWeather}
         />
