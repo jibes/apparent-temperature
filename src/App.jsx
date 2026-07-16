@@ -700,6 +700,7 @@ function ForecastChart({ hours, lat, lon, elevation, active, selTs, setSelTs, vi
         <div className="forecast-head">
           <span className="section-name muted">Vorschau</span>
         </div>
+        <div className="fc-days fc-days-skeleton" />
         <div className="fc-plot-skeleton"><span className="fc-loading">Vorschau lädt…</span></div>
         <div className="fc-readout-skeleton" />
         <p className="forecast-note">{FORECAST_NOTE}</p>
@@ -788,6 +789,25 @@ function ForecastChart({ hours, lat, lon, elevation, active, selTs, setSelTs, vi
     else if (hr % 6 === 0) mids.push(i)
     else if (hr % minorStep === 0) minor.push(i)
     if (hr !== 0 && hr % labelStep === 0) labels.push(i)
+  })
+
+  // Coarse per-day overview strip: min/max of the "hero" series (Gefühlt
+  // when shown, else air temp, else whatever is first) per calendar day.
+  // The detailed graph answers "how does tonight feel?"; this answers
+  // "which day next week is the hot one?" at a glance — tapping a day
+  // scrolls the graph there.
+  const heroSeries = series.find(s => s.key === 'felt') ?? series.find(s => s.key === 'temp') ?? series[0]
+  const dayTiles = days.map((d, k) => {
+    const end = k + 1 < days.length ? days[k + 1].i : n
+    let lo = Infinity, hi = -Infinity
+    if (heroSeries) {
+      for (let i = d.i; i < end; i++) {
+        const p = heroSeries.points[i]
+        if (!p) continue
+        lo = Math.min(lo, p.med); hi = Math.max(hi, p.med)
+      }
+    }
+    return { i: d.i, date: d.date, lo, hi, ok: Number.isFinite(lo) }
   })
 
   const nowIdx = nowHourIndex(hours)
@@ -966,6 +986,23 @@ function ForecastChart({ hours, lat, lon, elevation, active, selTs, setSelTs, vi
             <i className="fc-now-dot" /> Jetzt
           </button>
         </div>
+      </div>
+
+      <div className="fc-days">
+        {dayTiles.map(t => (
+          <button
+            key={t.i}
+            type="button"
+            className="fc-day"
+            onClick={() => { if (scrollRef.current) scrollRef.current.scrollLeft = Math.max(0, x(t.i) - 4) }}
+            title={`Zum ${WEEKDAY[t.date.getDay()]} ${t.date.getDate()}.${t.date.getMonth() + 1}. scrollen`}
+          >
+            <span className="fc-day-name">{WEEKDAY[t.date.getDay()]} {t.date.getDate()}.</span>
+            <span className="fc-day-range">
+              {t.ok ? <>{Math.round(t.lo)}°<em>/{Math.round(t.hi)}°</em></> : '–'}
+            </span>
+          </button>
+        ))}
       </div>
 
       <div className="fc-plot">
@@ -1226,27 +1263,54 @@ function MetricToggles({ active, onToggle }) {
 // AT the time selected in the graph (live "now" by default) — always in sync
 // with the graph's Gefühlt bubble/legend value. `when` is the small time
 // label above the value ("Jetzt", green+live, or the selected date/time).
-// Borderless — color-coded text only, no card background.
-function FeltNow({ point, airTemp, dp, when, live }) {
+// ‹/› step the selection hour by hour (scrubbing without precise graph
+// taps); tapping the number/label while a selection is active jumps back
+// to live. A soft radial glow behind the number carries the stress-category
+// color, so "pleasant" and "heat warning" differ at a glance, not just in
+// the digits. Borderless — no card background.
+function FeltNow({ point, airTemp, dp, when, live, onStep, onJumpLive }) {
   const schwuel = dp != null && dp >= 18 ? 'stark' : dp != null && dp >= 16 ? 'spürbar' : null
-  const whenEl = <div className={`felt-when ${live ? 'live' : ''}`}>{live && <i className="fc-now-dot" />}{when}</div>
+  const seek = !live && onJumpLive
+  const whenEl = (
+    <div className={`felt-when ${live ? 'live' : ''}`}>
+      {live && <i className="fc-now-dot" />}{when}{seek ? ' · tippen für Jetzt' : ''}
+    </div>
+  )
+  const valRow = inner => (
+    <div className="felt-val-row">
+      {onStep && (
+        <button type="button" className="felt-step" aria-label="Eine Stunde zurück"
+          onClick={e => { e.stopPropagation(); onStep(-1) }}>‹</button>
+      )}
+      {inner}
+      {onStep && (
+        <button type="button" className="felt-step" aria-label="Eine Stunde vor"
+          onClick={e => { e.stopPropagation(); onStep(1) }}>›</button>
+      )}
+    </div>
+  )
+  const rootProps = {
+    className: `felt-now ${seek ? 'seekable' : ''}`,
+    onClick: seek ? onJumpLive : undefined,
+    title: seek ? 'Zurück zu Jetzt' : undefined,
+  }
 
   // No usable outdoor reading at all (no data yet AND the sliders are on a
   // manual what-if override) — show a placeholder, not a made-up number.
   if (airTemp == null) {
     return (
-      <div className="felt-now">
+      <div {...rootProps}>
         {whenEl}
-        <div className="ap-val">–{' '}°C</div>
+        {valRow(<div className="ap-val">–{' '}°C</div>)}
         <p className="felt-hint">Warte auf Wetterdaten…</p>
       </div>
     )
   }
   if (!point) {
     return (
-      <div className="felt-now">
+      <div {...rootProps}>
         {whenEl}
-        <div className="ap-val">{fmt1(airTemp)}{' '}°C</div>
+        {valRow(<div className="ap-val">{fmt1(airTemp)}{' '}°C</div>)}
         <p className="felt-hint">Lufttemperatur — wähle oben mind. einen weiteren Faktor für „Gefühlt“.</p>
       </div>
     )
@@ -1255,13 +1319,13 @@ function FeltNow({ point, airTemp, dp, when, live }) {
   const color = TEMP_COLOR[colorClass(point.med)]
   const diff = point.med - airTemp
   return (
-    <div className="felt-now" style={{ '--felt-color': color }}>
+    <div {...rootProps} style={{ '--felt-color': color, '--felt-glow': color }}>
       {whenEl}
-      <div className="ap-val">{fmt1(point.med)}{' '}°C</div>
+      {valRow(<div className="ap-val">{fmt1(point.med)}{' '}°C</div>)}
       <div className="ap-cat">{cat.label}</div>
       <p className="felt-hint">
         {fmt1(point.lo)}–{fmt1(point.hi)}°C je nach Modell · {diff >= 0 ? '+' : ''}{fmt1(diff)}°C vs. Luft
-        {schwuel && <> · Schwüle {schwuel} (Tp {fmt1(dp)}°C)</>}
+        {schwuel && <> <span className="schwuele-chip">💧 Schwüle {schwuel} · Tp {fmt1(dp)}°C</span></>}
       </p>
     </div>
   )
@@ -1316,12 +1380,24 @@ function FeltTab({ outTemp, outRH, outManual, hours, wxMeta, gridPlace, lat, lon
   const when = selHour
     ? `${WEEKDAY[selHour.time.getDay()]} ${selHour.time.getDate()}.${selHour.time.getMonth() + 1}. ${String(selHour.time.getHours()).padStart(2, '0')}:00`
     : 'Jetzt'
+
+  // ‹/› scrub the selection one hour at a time; from live mode, › steps to
+  // the next whole hour and ‹ to the previous one (relative to the hour
+  // containing "now"). Clamped to the data window.
+  const stepHour = dir => {
+    if (!hours || !hours.length) return
+    const base = selHour ? selHourIdx : nowIdx
+    const idx = Math.max(0, Math.min(hours.length - 1, base + dir))
+    setSelTs(hours[idx].ts)
+  }
   const ens = ensembleInfo(hours)
 
   return (
     <>
       <div className="felt-top">
-        <FeltNow point={selPoint} airTemp={airTemp} dp={dp} when={when} live={!selHour} />
+        <FeltNow point={selPoint} airTemp={airTemp} dp={dp} when={when} live={!selHour}
+          onStep={hours && hours.length ? stepHour : undefined}
+          onJumpLive={() => setSelTs(null)} />
       </div>
 
       <MetricToggles active={active} onToggle={toggle} />
@@ -1625,16 +1701,30 @@ export default function App() {
   const [geoStatus,   setGeoStatus]   = useState('idle')
   const [geoLocation, setGeoLocation] = usePersistentState('geoLocation', null)
   const [locSource,   setLocSource]   = usePersistentState('locSource', 'gps') // 'gps' | 'search'
-  const [hours,       setHours]       = useState(null)
+  // Last successful weather is cached in localStorage: a cold start (offline,
+  // flaky network) hydrates from it and shows stale-but-labelled data — the
+  // freshness chip says "vor X Std" — instead of an empty placeholder until
+  // the first fetch succeeds. Dates are revived from their ISO strings.
+  const wxCache = (() => {
+    try { return JSON.parse(localStorage.getItem('wxCache')) } catch { return null }
+  })()
+  const [hours,       setHours]       = useState(() =>
+    wxCache?.hours ? wxCache.hours.map(h => ({ ...h, time: new Date(h.time) })) : null)
   // Graph selection, lifted so both tabs share it. Anchored to the selected
   // hour's timestamp (not its array index!) — hours is a sliding window that
   // shifts forward with every refetch, so an index can silently point at a
   // different hour (or vanish) once the window moves. null → "now".
   const [selTs,       setSelTs]       = useState(null)
-  const [wxMeta,      setWxMeta]      = useState(null) // { sources, spread }
+  const [wxMeta,      setWxMeta]      = useState(wxCache?.wxMeta ?? null) // { sources, spread }
   const [gridPlace,   setGridPlace]   = useState(null) // reverse-geocoded name of wxMeta.grid
-  const [updatedAt,   setUpdatedAt]   = useState(null) // ms of last successful fetch
+  const [updatedAt,   setUpdatedAt]   = useState(wxCache?.updatedAt ?? null) // ms of last successful fetch
   const [nowTick,     setNowTick]     = useState(0)    // forces the freshness label to refresh
+
+  // Keep the cache current (hours dominates the payload; meta rides along).
+  useEffect(() => {
+    if (!hours) return
+    try { localStorage.setItem('wxCache', JSON.stringify({ hours, wxMeta, updatedAt })) } catch {}
+  }, [hours, wxMeta, updatedAt])
 
   // The `current` endpoint only feeds methodology metadata (member count,
   // spread, grid cell) here — the actual outdoor temp/RH used everywhere

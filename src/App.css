@@ -549,6 +549,52 @@ input[type='range'] {
 }
 .felt-when.live { color: #86efac; }
 .felt-when.live .fc-now-dot { background: #86efac; animation: fc-live-blink 1.4s ease-in-out infinite; }
+
+/* Soft category-colored radial glow behind the number: "angenehm" vs.
+   "Hitzestress" reads at a glance, not only in the digits. --felt-glow is
+   set only when a felt value exists; otherwise transparent, no glow. */
+.felt-now {
+  width: 100%;
+  border-radius: 16px;
+  background: radial-gradient(58% 95% at 50% 42%,
+    color-mix(in srgb, var(--felt-glow, transparent) 11%, transparent),
+    transparent 100%);
+}
+.felt-now.seekable { cursor: pointer; }
+/* ‹ value › row — hour-by-hour scrubbing without precise graph taps. */
+.felt-val-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.7rem;
+}
+.felt-step {
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  width: 1.7rem;
+  height: 1.7rem;
+  border-radius: 50%;
+  font-size: 1.05rem;
+  line-height: 1;
+  cursor: pointer;
+  flex-shrink: 0;
+  padding: 0 0 0.15rem;
+  transition: color 0.15s, border-color 0.15s;
+}
+.felt-step:hover { color: var(--text); border-color: var(--accent); }
+/* Promoted humidity-stress indicator — the most actionable summer insight,
+   as a highlighted chip instead of trailing grey prose. */
+.schwuele-chip {
+  display: inline-block;
+  background: #78350f33;
+  border: 1px solid #92400e;
+  color: #fcd34d;
+  font-weight: 700;
+  padding: 0.02rem 0.45rem;
+  border-radius: 999px;
+  white-space: nowrap;
+}
 .felt-now .ap-val {
   font-size: 2.9rem;
   font-weight: 800;
@@ -848,6 +894,50 @@ input[type='range'] {
   color: var(--muted);
   margin-top: 0.4rem;
 }
+
+/* Coarse day-overview strip above the plot: one compact min/max tile per
+   forecast day, horizontally scrollable (hidden scrollbar — the graph
+   below is the primary scroller), tap scrolls the graph to that day.
+   Fixed height so the loading skeleton matches it exactly. */
+.fc-days {
+  display: flex;
+  gap: 0.3rem;
+  overflow-x: auto;
+  scrollbar-width: none;
+  height: 2.9rem;
+  margin-bottom: 0.45rem;
+}
+.fc-days::-webkit-scrollbar { display: none; }
+.fc-days-skeleton { background: #1e2235; border-radius: var(--rs); }
+.fc-day {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.05rem;
+  background: #1e2235;
+  border: 1px solid var(--border);
+  border-radius: var(--rs);
+  padding: 0.25rem 0.55rem;
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+.fc-day:hover { border-color: var(--accent); }
+.fc-day-name {
+  font-size: 0.62rem;
+  font-weight: 700;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.fc-day-range {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.fc-day-range em { font-style: normal; color: var(--text); }
 
 /* Loading placeholders — reserve the exact same fixed pieces (260px plot,
    the readout's reserved height, the real note markup) so the forecast box
