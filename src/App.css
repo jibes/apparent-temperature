@@ -523,12 +523,32 @@ input[type='range'] {
      varies (fallback vs. full state, Schwüle on/off, wrapping) then just
      centers within this space instead of growing/shrinking it and pushing
      the metric tiles and graph below up and down as it changes. */
-  height: 8rem;                 /* fixed, not min: never grows/shrinks */
+  height: 9rem;                 /* fixed, not min: never grows/shrinks
+                                   (sized for value + category + 2-line hint
+                                   + the small time label) */
   display: flex;
   flex-direction: column;
   justify-content: center;
   overflow: hidden;
 }
+/* Small time label above the headline value — which instant the number
+   describes: "Jetzt" (green, live-blinking dot, same language as the graph
+   line and button) or the tapped hour's local date/time. */
+.felt-when {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.32rem;
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+  margin-bottom: 0.35rem;
+  font-variant-numeric: tabular-nums;
+}
+.felt-when.live { color: #86efac; }
+.felt-when.live .fc-now-dot { background: #86efac; animation: fc-live-blink 1.4s ease-in-out infinite; }
 .felt-now .ap-val {
   font-size: 2.9rem;
   font-weight: 800;

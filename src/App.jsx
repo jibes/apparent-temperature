@@ -1222,16 +1222,21 @@ function MetricToggles({ active, onToggle }) {
   )
 }
 
-// The one headline number: UTCI folded from whichever factors are active.
+// The one headline number: UTCI folded from whichever factors are active,
+// AT the time selected in the graph (live "now" by default) — always in sync
+// with the graph's Gefühlt bubble/legend value. `when` is the small time
+// label above the value ("Jetzt", green+live, or the selected date/time).
 // Borderless — color-coded text only, no card background.
-function FeltNow({ point, airTemp, dp }) {
+function FeltNow({ point, airTemp, dp, when, live }) {
   const schwuel = dp != null && dp >= 18 ? 'stark' : dp != null && dp >= 16 ? 'spürbar' : null
+  const whenEl = <div className={`felt-when ${live ? 'live' : ''}`}>{live && <i className="fc-now-dot" />}{when}</div>
 
   // No usable outdoor reading at all (no data yet AND the sliders are on a
   // manual what-if override) — show a placeholder, not a made-up number.
   if (airTemp == null) {
     return (
       <div className="felt-now">
+        {whenEl}
         <div className="ap-val">–{' '}°C</div>
         <p className="felt-hint">Warte auf Wetterdaten…</p>
       </div>
@@ -1240,6 +1245,7 @@ function FeltNow({ point, airTemp, dp }) {
   if (!point) {
     return (
       <div className="felt-now">
+        {whenEl}
         <div className="ap-val">{fmt1(airTemp)}{' '}°C</div>
         <p className="felt-hint">Lufttemperatur — wähle oben mind. einen weiteren Faktor für „Gefühlt“.</p>
       </div>
@@ -1250,6 +1256,7 @@ function FeltNow({ point, airTemp, dp }) {
   const diff = point.med - airTemp
   return (
     <div className="felt-now" style={{ '--felt-color': color }}>
+      {whenEl}
       <div className="ap-val">{fmt1(point.med)}{' '}°C</div>
       <div className="ap-cat">{cat.label}</div>
       <p className="felt-hint">
@@ -1274,33 +1281,47 @@ function FeltTab({ outTemp, outRH, outManual, hours, wxMeta, gridPlace, lat, lon
   const feltDef = DERIVED.find(d => d.felt)
   const nowIdx  = hours && hours.length ? nowHourIndex(hours) : null
 
-  // Everything "now" on this tab reads the interpolated current moment (the
-  // hourly data is only exact on the hour) so the headline value, its air-temp
-  // baseline, the Schwüle dew point and the graph readout all agree. Uses the
-  // same nowReading() source as the Lüften tab's Aussen inputs.
+  // The headline follows the graph selection: a tapped hour shows THAT
+  // hour's felt temp (same value as the graph's Gefühlt bubble/legend);
+  // live mode ("now", the default — also the fallback when a selection
+  // aged out of the data window) shows the interpolated current moment.
+  // Air-temp baseline, Schwüle dew point and the graph readout all read
+  // the same selected instant, so nothing on this tab ever disagrees.
   // Before the forecast arrives, the sliders' persisted values are the only
   // stand-in — but NOT when the user has manually overridden them in the
   // Lüften tab for a what-if scenario: presenting e.g. an experimental -20°C
   // as the real outdoor temperature would be plain wrong. Show a placeholder
   // until real data lands instead.
+  const selHourIdx = selTs != null && hours ? hours.findIndex(h => h.ts === selTs) : -1
+  const selHour = selHourIdx === -1 ? null : hours[selHourIdx]
+
   const nv      = nowReading(hours)
-  const airTemp = nv ? nv.temp     : (outManual ? null : outTemp)
-  const airRH   = nv ? nv.humidity : (outManual ? null : outRH)
+  const airTemp = selHour ? selHour.temp     : nv ? nv.temp     : (outManual ? null : outTemp)
+  const airRH   = selHour ? selHour.humidity : nv ? nv.humidity : (outManual ? null : outRH)
   const dp      = airTemp != null ? dewPoint(airTemp, airRH) : null
 
-  const nowPoint = (nowIdx != null && feltDef.show(active))
-    ? interpPoint(
-        feltPoints([hours[nowIdx]], { lat, lon, elevation }, active)[0],
-        hours[nowIdx + 1] ? feltPoints([hours[nowIdx + 1]], { lat, lon, elevation }, active)[0] : null,
-        nowFraction(hours, nowIdx)
-      )
+  const feltShown = nowIdx != null && feltDef.show(active)
+  const selPoint = feltShown
+    ? selHour
+      ? feltPoints([selHour], { lat, lon, elevation }, active)[0]
+      : interpPoint(
+          feltPoints([hours[nowIdx]], { lat, lon, elevation }, active)[0],
+          hours[nowIdx + 1] ? feltPoints([hours[nowIdx + 1]], { lat, lon, elevation }, active)[0] : null,
+          nowFraction(hours, nowIdx)
+        )
     : null
+  // Small time label above the value: the location's wall-clock date/time of
+  // the tapped hour, or plain "Jetzt" while live (no minutes — this tab only
+  // re-renders with data refreshes, so a printed clock time would go stale).
+  const when = selHour
+    ? `${WEEKDAY[selHour.time.getDay()]} ${selHour.time.getDate()}.${selHour.time.getMonth() + 1}. ${String(selHour.time.getHours()).padStart(2, '0')}:00`
+    : 'Jetzt'
   const ens = ensembleInfo(hours)
 
   return (
     <>
       <div className="felt-top">
-        <FeltNow point={nowPoint} airTemp={airTemp} dp={dp} />
+        <FeltNow point={selPoint} airTemp={airTemp} dp={dp} when={when} live={!selHour} />
       </div>
 
       <MetricToggles active={active} onToggle={toggle} />
