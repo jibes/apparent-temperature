@@ -398,7 +398,7 @@ body::-webkit-scrollbar-thumb:hover { background: var(--accent); }
   border-top: 1px solid var(--border);
 }
 
-/* ── Controls (sliders + presets) ── */
+/* ── Controls (sliders) ── */
 .control {
   margin-top: 1rem;
 }
@@ -499,25 +499,6 @@ input[type='range'] {
   padding: 0 0.3rem;
 }
 .vent-note em { color: var(--text); font-style: italic; }
-
-.preset-btn {
-  flex: 0 1 auto;
-  background: #1e2235;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  color: var(--muted);
-  font-size: 0.72rem;
-  font-weight: 600;
-  padding: 0.3rem 0.55rem;
-  cursor: pointer;
-  white-space: nowrap;
-  transition: border-color 0.15s, background 0.15s, color 0.15s;
-}
-.preset-btn.active {
-  border-color: var(--accent);
-  background: #2a2f55;
-  color: var(--text);
-}
 
 /* Outdoor action buttons (reset to live / import graph point). Always
    present, so they live in a fixed row and just enable/disable. */

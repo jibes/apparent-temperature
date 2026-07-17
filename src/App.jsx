@@ -1,6 +1,6 @@
 import { useState, useEffect, useLayoutEffect, useRef, useMemo } from 'react'
 import {
-  utci, utciCategory, meanRadiantTemp, clearSkyMax, clearSkyGHI, solarElevation,
+  utci, utciCategory, meanRadiantTemp, clearSkyGHI, solarElevation,
   ventilationAssessment, indoorApparentTemp,
   dewPoint,
   absoluteHumidity, specificEnthalpy,
@@ -1020,7 +1020,9 @@ function ForecastChart({ hours, lat, lon, elevation, active, selTs, setSelTs, vi
             type="button"
             className={`fc-day ${t.date.toDateString() === hours[nowIdx].time.toDateString() ? 'today' : ''}`}
             onClick={() => { if (scrollRef.current) scrollRef.current.scrollLeft = Math.max(0, x(t.i) - 4) }}
-            title={`Zum ${WEEKDAY[t.date.getDay()]} ${t.date.getDate()}.${t.date.getMonth() + 1}. scrollen`}
+            title={heroSeries && t.ok
+              ? `${heroSeries.label} ${Math.round(t.lo)}–${Math.round(t.hi)} ${heroSeries.unit} · tippen: im Graph anzeigen`
+              : `Zum ${WEEKDAY[t.date.getDay()]} ${t.date.getDate()}.${t.date.getMonth() + 1}. scrollen`}
           >
             <span className="fc-day-name">{WEEKDAY[t.date.getDay()]} {t.date.getDate()}.</span>
             <span className="fc-day-range">
@@ -1170,7 +1172,9 @@ function ForecastChart({ hours, lat, lon, elevation, active, selTs, setSelTs, vi
                   onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleIso() } }}>
                   <i className="mdot" style={{ background: s.color }} />
                   <span className="fc-rrow-label">{s.label}</span>
-                  {showSpread && <span className="fc-rrow-range">{f(p.lo)}–{f(p.hi)}</span>}
+                  {/* Range hidden when the models agree after rounding —
+                      "14–14" carries no information. */}
+                  {showSpread && f(p.lo) !== f(p.hi) && <span className="fc-rrow-range">{f(p.lo)}–{f(p.hi)}</span>}
                   <span className="fc-rrow-value">{f(p.med)} {s.unit}</span>
                 </div>
               )
@@ -1354,7 +1358,10 @@ function FeltNow({ point, airTemp, dp, when, live, onStep, onJumpLive }) {
       {valRow(<div className="ap-val">{fmt1(point.med)}{' '}°C</div>)}
       <div className="ap-cat">{cat.label}</div>
       <p className="felt-hint">
-        {fmt1(point.lo)}–{fmt1(point.hi)}°C je nach Modell · {diff >= 0 ? '+' : ''}{fmt1(diff)}°C vs. Luft
+        {/* Model range only when the models actually disagree — a
+            "14.0–14.0°C je nach Modell" is meaningless noise. */}
+        {fmt1(point.lo) !== fmt1(point.hi) && <>{fmt1(point.lo)}–{fmt1(point.hi)}°C je nach Modell · </>}
+        {diff >= 0 ? '+' : ''}{fmt1(diff)}°C vs. Luft
         {schwuel && <> <span className="schwuele-chip">💧 Schwüle {schwuel} · Tp {fmt1(dp)}°C</span></>}
       </p>
     </div>
@@ -1708,7 +1715,9 @@ function LueftenTab({
       {/* 4 — NERD DATA. The full psychrometrics, opt-in. */}
       <details className="section-card">
         <summary className="section-summary">
-          <span className="section-name muted">Details (Physik)</span>
+          {/* Same name as the Gefühlt tab's nerd section — one consistent
+              label for "the math behind it" everywhere. */}
+          <span className="section-name muted">Formeln & Methodik</span>
         </summary>
         <div className="section-body">
           <VentTable Tin={inTemp} RHin={inRH} Tout={outTemp} RHout={outRH} elevM={elevation} />
