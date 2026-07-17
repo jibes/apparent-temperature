@@ -209,12 +209,6 @@ body::-webkit-scrollbar-thumb:hover { background: var(--accent); }
   margin-bottom: 0.6rem;
   overflow: hidden;
 }
-/* Outdoor values are a manual what-if override (not live) — signalled by a
-   tinted border instead of a "· manuell" label, which cost header width and
-   pushed the felt chip out of the one-line row. The always-visible, now
-   enabled "Zurück zu Live-Daten" button inside confirms it. */
-.section-card.card-manual { border-color: #92400e; }
-
 .section-summary {
   display: flex;
   align-items: center;
@@ -296,6 +290,23 @@ body::-webkit-scrollbar-thumb:hover { background: var(--accent); }
 .vent-hero.bad     { border-color: #991b1b; background: #7f1d1d22; }
 .vent-hero.warn    { border-color: #92400e; background: #78350f22; }
 .vent-hero.neutral { border-color: var(--border); }
+/* Which instant the verdict describes — same time-label language as the
+   Gefühlt headline ("Jetzt" green + blinking dot, or the tapped hour). */
+.vh-when {
+  display: flex;
+  align-items: center;
+  gap: 0.32rem;
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+  margin-bottom: 0.3rem;
+  font-variant-numeric: tabular-nums;
+}
+.vh-when.live { color: #86efac; }
+.vh-when.live .fc-now-dot { background: #86efac; animation: fc-live-blink 1.4s ease-in-out infinite; }
+.vent-hero.seekable { cursor: pointer; }
 .vh-verdict { font-size: 1.25rem; font-weight: 800; }
 .vent-hero.good    .vh-verdict { color: #86efac; }
 .vent-hero.bad     .vh-verdict { color: #fca5a5; }
@@ -335,13 +346,23 @@ body::-webkit-scrollbar-thumb:hover { background: var(--accent); }
   border-radius: 6px;
   overflow: hidden;
 }
-.vt-cell { flex: 1; opacity: 0.85; }
+/* Cells are buttons (tap = move the hero verdict to that hour). */
+.vt-cell {
+  flex: 1;
+  opacity: 0.85;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  min-width: 0;
+}
 .vt-cell.good    { background: #22c55e; }
 .vt-cell.warn    { background: #eab308; }
 .vt-cell.neutral { background: #3a4160; }
 .vt-cell.bad     { background: #b91c1c; }
 /* the bestVentWindow run pops out of the strip */
 .vt-cell.best    { opacity: 1; box-shadow: inset 0 -3px 0 #fff9; }
+/* the tapped hour driving the hero verdict */
+.vt-cell.sel     { opacity: 1; box-shadow: inset 0 0 0 2px #fff; }
 /* Fixed height so the empty skeleton label row matches the real one. */
 .vt-labels { display: flex; margin-top: 0.15rem; height: 0.75rem; }
 .vt-lab {
@@ -472,7 +493,9 @@ input[type='range'] {
   line-height: 1.4;
   padding: 0.5rem 0.7rem;
   border-radius: var(--rs);
-  width: 200px;
+  /* Never wider than the viewport allows — combined with the measured
+     clamp-shift in the Info component, the tip is always fully visible. */
+  width: min(200px, calc(100vw - 2rem));
   z-index: 10;
   pointer-events: none;
 }
@@ -484,42 +507,6 @@ input[type='range'] {
   padding: 0 0.3rem;
 }
 .vent-note em { color: var(--text); font-style: italic; }
-
-/* Outdoor action buttons (reset to live / import graph point). Always
-   present, so they live in a fixed row and just enable/disable. */
-.vent-actions {
-  display: flex;
-  flex-direction: column;
-  gap: 0.4rem;
-  margin-bottom: 0.7rem;
-}
-.graph-import {
-  display: block;
-  width: 100%;
-  padding: 0.5rem 0.7rem;
-  background: #2a2f55;
-  border: 1px solid var(--accent);
-  border-radius: var(--rs);
-  color: var(--text);
-  font-size: 0.76rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: background 0.15s, opacity 0.15s, border-color 0.15s;
-  /* One line always (the import label carries a variable-length point
-     description) so a button never wraps to two lines and shifts things. */
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.graph-import:hover:not(:disabled) { background: #343a68; }
-/* Deactivated, not hidden — same idea as the graph's greyed-out Jetzt
-   button when it's not live: visible but clearly inert. */
-.graph-import:disabled {
-  opacity: 0.4;
-  cursor: default;
-  border-color: var(--border);
-  color: var(--muted);
-}
 
 /* ── Top: single headline "Gefühlt" value — a proper surface card, matching
    the app's boxed design language (top bar, forecast, hero are all cards;

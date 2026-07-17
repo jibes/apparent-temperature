@@ -175,7 +175,9 @@ function Slider({ label, value, onChange, min, max, step, unit }) {
 
 function Info({ children }) {
   const [open, setOpen] = useState(false)
+  const [dx, setDx]     = useState(0)
   const ref = useRef()
+  const tipRef = useRef()
   // Close on any tap/click outside — an open tooltip otherwise stays until
   // its own "i" is hit again, unlike every other transient UI element.
   useEffect(() => {
@@ -184,14 +186,30 @@ function Info({ children }) {
     document.addEventListener('pointerdown', close)
     return () => document.removeEventListener('pointerdown', close)
   }, [open])
+  // The tip is centered on its trigger; near a screen edge that would clip
+  // it (the info icons in the table sit close to the left edge on phones).
+  // Measure once per open — before paint, so no visible jump — and shift it
+  // just enough to stay fully inside the viewport.
+  useLayoutEffect(() => {
+    if (!open || !tipRef.current) return
+    const pad = 10
+    const r = tipRef.current.getBoundingClientRect()
+    if (r.left < pad) setDx(pad - r.left)
+    else if (r.right > window.innerWidth - pad) setDx(window.innerWidth - pad - r.right)
+  }, [open])
   return (
     <span className="info-wrap" ref={ref}>
       <button
         className="info-btn"
-        onClick={e => { e.stopPropagation(); e.preventDefault(); setOpen(o => !o) }}
+        onClick={e => { e.stopPropagation(); e.preventDefault(); setDx(0); setOpen(o => !o) }}
         aria-label="Info"
       >i</button>
-      {open && <span className="info-tip">{children}</span>}
+      {open && (
+        <span className="info-tip" ref={tipRef}
+          style={{ transform: `translateX(calc(-50% + ${dx}px))` }}>
+          {children}
+        </span>
+      )}
     </span>
   )
 }
@@ -1367,7 +1385,7 @@ function FeltNow({ point, airTemp, dp, when, live, onStep, onJumpLive }) {
   )
 }
 
-function FeltTab({ outTemp, outRH, outManual, hours, wxMeta, gridPlace, lat, lon, selTs, setSelTs, visible }) {
+function FeltTab({ hours, wxMeta, gridPlace, lat, lon, selTs, setSelTs, visible }) {
   // Persisted like the tab, sliders and location — a reload shouldn't reset
   // the metric selection while remembering everything else.
   const [active, setActive] = usePersistentState('metrics', { temp: true, ah: true, wind: true, csun: true, clouds: true })
@@ -1387,17 +1405,15 @@ function FeltTab({ outTemp, outRH, outManual, hours, wxMeta, gridPlace, lat, lon
   // aged out of the data window) shows the interpolated current moment.
   // Air-temp baseline, Schwüle dew point and the graph readout all read
   // the same selected instant, so nothing on this tab ever disagrees.
-  // Before the forecast arrives, the sliders' persisted values are the only
-  // stand-in — but NOT when the user has manually overridden them in the
-  // Lüften tab for a what-if scenario: presenting e.g. an experimental -20°C
-  // as the real outdoor temperature would be plain wrong. Show a placeholder
-  // until real data lands instead.
+  // No data at all (first-ever visit, before the first fetch — the weather
+  // cache covers every later cold start) → honest placeholder, no made-up
+  // number.
   const selHourIdx = selTs != null && hours ? hours.findIndex(h => h.ts === selTs) : -1
   const selHour = selHourIdx === -1 ? null : hours[selHourIdx]
 
   const nv      = nowReading(hours)
-  const airTemp = selHour ? selHour.temp     : nv ? nv.temp     : (outManual ? null : outTemp)
-  const airRH   = selHour ? selHour.humidity : nv ? nv.humidity : (outManual ? null : outRH)
+  const airTemp = selHour ? selHour.temp     : nv ? nv.temp     : null
+  const airRH   = selHour ? selHour.humidity : nv ? nv.humidity : null
   const dp      = airTemp != null ? dewPoint(airTemp, airRH) : null
 
   const feltShown = nowIdx != null && feltDef.show(active)
@@ -1541,8 +1557,11 @@ const VENT_HERO = {
 // Hour-by-hour verdict strip for the next 24 h — answers "if not now, when?"
 // at a glance instead of a single text line. Each cell is colored by the
 // same ventVerdict the hero uses (with the forecast outdoor conditions), and
-// the best window found by bestVentWindow is emphasized.
-function VentTimeline({ hours, Tin, RHin, win, elevM = 0 }) {
+// the best window found by bestVentWindow is emphasized. Tapping an hour
+// selects it — the hero verdict above recomputes for that hour (tap again,
+// or the hero itself, to return to "jetzt"). This replaced the manual
+// what-if sliders: exploring "later tonight?" is one tap, not slider work.
+function VentTimeline({ hours, Tin, RHin, win, elevM = 0, selTs, onPick }) {
   const now = Date.now()
   const fut = hours.filter(h => h.ts + 3600000 > now).slice(0, 24)
   // Fully stale data (no future hours): keep the card's exact shape with an
@@ -1559,15 +1578,20 @@ function VentTimeline({ hours, Tin, RHin, win, elevM = 0 }) {
   const inWin = h => win && h.time >= win.start && h.time <= win.end
   return (
     <div className="vent-timeline">
-      <div className="vt-title section-name muted">Nächste 24 h</div>
+      <div className="vt-title section-name muted">Nächste 24 h · Stunde antippen</div>
       <div className="vt-strip">
         {fut.map(h => {
           const v = ventVerdict(Tin, RHin, h.temp, h.humidity, elevM)
+          const label = `${String(h.time.getHours()).padStart(2, '0')} Uhr: ${v.short} (${fmt1(h.temp)} °C, ${Math.round(h.humidity)} %)`
           return (
-            <div
+            <button
               key={h.ts}
-              className={`vt-cell ${v.cls} ${inWin(h) ? 'best' : ''}`}
-              title={`${String(h.time.getHours()).padStart(2, '0')} Uhr: ${v.short} (${fmt1(h.temp)} °C, ${Math.round(h.humidity)} %)`}
+              type="button"
+              className={`vt-cell ${v.cls} ${inWin(h) ? 'best' : ''} ${selTs === h.ts ? 'sel' : ''}`}
+              onClick={() => onPick(selTs === h.ts ? null : h.ts)}
+              title={label}
+              aria-label={label}
+              aria-pressed={selTs === h.ts}
             />
           )
         })}
@@ -1581,38 +1605,29 @@ function VentTimeline({ hours, Tin, RHin, win, elevM = 0 }) {
   )
 }
 
-// Ventilation tab (indoor + outdoor: temp + humidity only)
+// Ventilation tab. Outdoor conditions are DATA, never hand-edited: live
+// "now" by default, or the tapped hour of the 24h strip — the manual
+// what-if sliders and the graph-import coupling are gone; exploring "was
+// wäre heute Abend?" is a single tap on the timeline, which drives the
+// hero verdict directly.
+function LueftenTab({ inTemp, setInTemp, inRH, setInRH, outTemp, outRH, hours, elevation = 0 }) {
+  // Selected timeline hour, anchored to its timestamp (like the graph
+  // selection) so a data refresh can't silently shift it; null = live now.
+  const [selTs, setSelTs] = useState(null)
+  const selHour = selTs != null && hours ? hours.find(h => h.ts === selTs) ?? null : null
+  const oTemp = selHour ? selHour.temp : outTemp
+  const oRH   = selHour ? selHour.humidity : outRH
 
-function LueftenTab({
-  inTemp, setInTemp, inRH, setInRH, outTemp, setOutTemp, outRH, setOutRH,
-  setOutManual, outManual, onResetOutdoor, hours, graphPoint, elevation = 0,
-}) {
-  const verdict   = ventVerdict(inTemp, inRH, outTemp, outRH, elevation)
+  const verdict   = ventVerdict(inTemp, inRH, oTemp, oRH, elevation)
   const feltIn    = indoorApparentTemp(inTemp, inRH).value
-  const feltOut   = indoorApparentTemp(outTemp, outRH).value
+  const feltOut   = indoorApparentTemp(oTemp, oRH).value
   const win       = bestVentWindow(hours, inTemp, inRH)
   const comfyNow  = comfortPenalty(inTemp, inRH) < 0.5
 
-  // Any direct edit to the outdoor sliders (or importing a graph point) is a
-  // deliberate override — mark it so the auto-sync from live data stops
-  // clobbering it, and the "back to live" button below appears.
-  const setOutTempManual = v => { setOutTemp(v); setOutManual(true) }
-  const setOutRHManual   = v => { setOutRH(v);   setOutManual(true) }
-
-  // Pull the temp/humidity of the point currently selected in the Gefühlt-tab
-  // graph (or "now") into the outdoor sliders, so a forecast hour can be
-  // explored here without re-entering values by hand. Shown only when it would
-  // actually change the sliders (i.e. they don't already match that point).
-  const gpTemp = graphPoint && Math.round(graphPoint.temp * 2) / 2
-  const gpRH   = graphPoint && Math.round(graphPoint.humidity)
-  const canImport = graphPoint && (gpTemp !== outTemp || gpRH !== outRH)
-  const importGraph = () => { setOutTempManual(gpTemp); setOutRHManual(gpRH) }
-
   // What opening the windows would actually DO, as outcome chips. Capped at
-  // two (moisture + heat) so the chip area stays within its reserved height:
-  // condensation dominates everything else, and "manuelle Aussenwerte" lives
-  // in the Aussen header, not here.
-  const a = ventilationAssessment(inTemp, inRH, outTemp, outRH, elevation)
+  // two (moisture + heat) so the chip area stays within its reserved height;
+  // condensation dominates everything else.
+  const a = ventilationAssessment(inTemp, inRH, oTemp, oRH, elevation)
   const effects = []
   if (a.condensationRisk) {
     effects.push({ text: '⚠ Kondensationsgefahr', cls: 'bad' })
@@ -1627,13 +1642,26 @@ function LueftenTab({
   }
 
   const hero = VENT_HERO[verdict.short] ?? { title: verdict.short, icon: '' }
+  // Which instant the verdict describes — same time-label language as the
+  // Gefühlt headline: live "Jetzt" or the tapped hour; tapping the hero
+  // returns to live.
+  const when = selHour
+    ? `${WEEKDAY[selHour.time.getDay()]} ${String(selHour.time.getHours()).padStart(2, '0')}:00 · tippen für Jetzt`
+    : 'Jetzt'
 
   return (
     <>
       {/* 1 — THE ANSWER. What the user came for, first and unmissable. */}
-      <div className={`vent-hero ${verdict.cls}`}>
+      <div
+        className={`vent-hero ${verdict.cls} ${selHour ? 'seekable' : ''}`}
+        onClick={selHour ? () => setSelTs(null) : undefined}
+        title={selHour ? 'Zurück zu Jetzt' : undefined}
+      >
+        <div className={`vh-when ${selHour ? '' : 'live'}`}>
+          {!selHour && <i className="fc-now-dot" />}{when}
+        </div>
         <div className="vh-verdict">{hero.icon} {hero.title}</div>
-        <p className="vh-reason">{ventReason(inTemp, inRH, outTemp, outRH, elevation)}</p>
+        <p className="vh-reason">{ventReason(inTemp, inRH, oTemp, oRH, elevation)}</p>
         <div className="vh-chips">
           {effects.map(e => (
             <span key={e.text} className={`verdict-chip ${e.cls}`}>{e.text}</span>
@@ -1641,11 +1669,12 @@ function LueftenTab({
         </div>
       </div>
 
-      {/* 2 — IF NOT NOW, WHEN? Hour strip beats a single text line. Always
-          rendered (skeleton while the forecast loads) so it doesn't pop in. */}
+      {/* 2 — IF NOT NOW, WHEN? Tappable hour strip: a tap moves the verdict
+          above to that hour. Always rendered (skeleton while loading). */}
       <div className="section-card vent-when">
         {hours
-          ? <VentTimeline hours={hours} Tin={inTemp} RHin={inRH} win={win} elevM={elevation} />
+          ? <VentTimeline hours={hours} Tin={inTemp} RHin={inRH} win={win} elevM={elevation}
+              selTs={selTs} onPick={setSelTs} />
           : <>
               <div className="vt-title section-name muted">Nächste 24 h</div>
               <div className="vt-strip vt-strip-skeleton" />
@@ -1668,8 +1697,8 @@ function LueftenTab({
       </div>
 
       {/* 3 — THE INPUTS. Indoor is the only thing the app can't know — always
-          visible, no collapsible to hunt through. Outdoor is live data with a
-          clearly-marked manual what-if mode. */}
+          visible. Outdoor is pure data (live or the selected hour), shown
+          read-only so it can never silently disagree with the verdict. */}
       <div className="section-card vent-inputs">
         <div className="vent-inputs-head">
           <span className="section-name">Innen</span>
@@ -1683,33 +1712,16 @@ function LueftenTab({
         </div>
       </div>
 
-      <details className={`section-card ${outManual ? 'card-manual' : ''}`}>
-        <summary className="section-summary">
+      <div className="section-card vent-inputs">
+        <div className="vent-inputs-head">
           <span className="section-name">Aussen</span>
           <span className="summary-chips">
-            <Chip>{outTemp}{' '}°C</Chip>
-            <Chip>{outRH}{' '}%</Chip>
+            <Chip>{fmt1(oTemp)}{' '}°C</Chip>
+            <Chip>{Math.round(oRH)}{' '}%</Chip>
             <Chip cls="felt">≈ {fmt1(feltOut)} °C</Chip>
           </span>
-        </summary>
-        <div className="section-body">
-          {/* Both actions are always present and just enable/disable — like
-              the graph's always-visible "Jetzt" button — so the panel height
-              never jumps as they'd otherwise appear/disappear. */}
-          <div className="vent-actions">
-            <button type="button" className="graph-import" onClick={onResetOutdoor} disabled={!outManual}>
-              ↺ Zurück zu Live-Daten
-            </button>
-            <button type="button" className="graph-import" onClick={importGraph} disabled={!canImport}>
-              {canImport
-                ? `⟳ Graphpunkt übernehmen (${graphPoint.label}: ${fmt1(graphPoint.temp)} °C · ${gpRH} %)`
-                : '⟳ Graphpunkt übernehmen'}
-            </button>
-          </div>
-          <Slider label="Temperatur"       value={outTemp} onChange={setOutTempManual} min={-30} max={50}  step={0.5} unit="°C" />
-          <Slider label="Luftfeuchtigkeit" value={outRH}   onChange={setOutRHManual}   min={1}   max={100} step={1}   unit="%" />
         </div>
-      </details>
+      </div>
 
       {/* 4 — NERD DATA. The full psychrometrics, opt-in. */}
       <details className="section-card">
@@ -1741,10 +1753,6 @@ export default function App() {
   const [outRH,   setOutRH]   = usePersistentState('outRH', 65)
   const [inTemp,  setInTemp]  = usePersistentState('inTemp', 24)
   const [inRH,    setInRH]    = usePersistentState('inRH', 55)
-  // Once the user edits the Lüften Aussen sliders directly, stop silently
-  // overwriting them on every refetch — they're deliberately exploring a
-  // "what if" scenario. resetOutdoorToLive() is the explicit way back.
-  const [outManual, setOutManual] = usePersistentState('outManual', false)
 
   const [geoStatus,   setGeoStatus]   = useState('idle')
   const [geoLocation, setGeoLocation] = usePersistentState('geoLocation', null)
@@ -1781,7 +1789,13 @@ export default function App() {
   // "the current outdoor reading" instead of two independent fetches that
   // can disagree (they hit the same models but current vs. hourly aggregation
   // differ, which showed up as a real gap e.g. in humidity).
-  const prefilledRef = useRef(false)
+  // Prefill guard for the indoor temperature: only a genuinely FIRST visit
+  // (no persisted inTemp yet) gets it seeded from the outdoor reading.
+  // Initialized from localStorage directly — with the weather cache hydrating
+  // `hours` synchronously, the sync effect below runs before any mount logic
+  // could set this flag, and used to clobber the user's saved indoor temp on
+  // every reload.
+  const prefilledRef = useRef(localStorage.getItem('inTemp') != null)
   function applyWeather(w) {
     if (w.sources) setWxMeta({ sources: w.sources, spread: w.spread, grid: w.grid })
     setUpdatedAt(Date.now())
@@ -1799,32 +1813,20 @@ export default function App() {
     return () => { cancelled = true }
   }, [gridLat, gridLon])
 
-  // Sync outdoor inputs from the interpolated "now" reading whenever a fresh
-  // forecast arrives (same source as the Gefühlt tab, quantized to the slider
-  // steps), so Lüften's Aussen matches the Gefühlt tab — but only while the
-  // user hasn't overridden them by hand (see outManual above). Prefill indoor
-  // temp once so the Lüften tab starts from a sensible baseline (= outdoor temp).
+  // Sync the outdoor values from the interpolated "now" reading whenever a
+  // fresh forecast arrives (same source as the Gefühlt tab) — outdoor is
+  // pure data, no manual override anymore. Prefill indoor temp once (first
+  // visit ever) so the Lüften tab starts from a sensible baseline.
   useEffect(() => {
-    const nv = nowReading(hours)
-    if (!nv) return
-    if (!outManual) {
-      setOutTemp(Math.round(nv.temp * 2) / 2)
-      setOutRH(Math.round(nv.humidity))
-    }
-    if (!prefilledRef.current) {
-      setInTemp(Math.round(nv.temp * 2) / 2)
-      prefilledRef.current = true
-    }
-  }, [hours, outManual])
-
-  // Explicit way back to live data after outManual has diverged from it.
-  function resetOutdoorToLive() {
     const nv = nowReading(hours)
     if (!nv) return
     setOutTemp(Math.round(nv.temp * 2) / 2)
     setOutRH(Math.round(nv.humidity))
-    setOutManual(false)
-  }
+    if (!prefilledRef.current) {
+      setInTemp(Math.round(nv.temp * 2) / 2)
+      prefilledRef.current = true
+    }
+  }, [hours])
 
   // `silent` = a background re-acquire (auto-refresh, or catching up on a
   // position change after mount): don't flip the status chip to "wird
@@ -1912,7 +1914,6 @@ export default function App() {
   // used, and GPS mode means "where I am", not "where I was".
   useEffect(() => {
     if (geoLocation && geoLocation.lat != null) {
-      prefilledRef.current = true // don't overwrite restored indoor temp
       refetchFor(geoLocation.lat, geoLocation.lon, geoLocation.name)
       if (locSource !== 'search') loadWeather(true)
     } else {
@@ -1952,22 +1953,6 @@ export default function App() {
     }
   }, [updatedAt, locSource, geoLocation])
 
-  // Temp/humidity of the point currently selected in the graph (or the
-  // interpolated "now" when nothing is tapped, or the selection has aged out
-  // of the hourly window), for the Lüften import button.
-  const graphPoint = (() => {
-    if (geoStatus !== 'ok' || !hours || !hours.length) return null
-    const h = selTs != null ? hours.find(h => h.ts === selTs) : null
-    if (!h) {
-      const nv = nowReading(hours)
-      return nv && { temp: nv.temp, humidity: nv.humidity, label: 'jetzt' }
-    }
-    return {
-      temp: h.temp, humidity: h.humidity,
-      label: `${WEEKDAY[h.time.getDay()]} ${String(h.time.getHours()).padStart(2, '0')}:00`,
-    }
-  })()
-
   return (
     <div className="app">
       {/* No separate title: the tabs are the heading, with the (global, not
@@ -2001,9 +1986,6 @@ export default function App() {
       <main>
         <div style={{ display: tab === 'felt' ? undefined : 'none' }}>
           <FeltTab
-            outTemp={outTemp}
-            outRH={outRH}
-            outManual={outManual}
             hours={hours}
             wxMeta={geoStatus === 'ok' ? wxMeta : null}
             gridPlace={geoStatus === 'ok' ? gridPlace : null}
@@ -2018,13 +2000,9 @@ export default function App() {
           <LueftenTab
             inTemp={inTemp}   setInTemp={setInTemp}
             inRH={inRH}       setInRH={setInRH}
-            outTemp={outTemp} setOutTemp={setOutTemp}
-            outRH={outRH}     setOutRH={setOutRH}
-            setOutManual={setOutManual}
-            outManual={outManual}
-            onResetOutdoor={resetOutdoorToLive}
-            hours={geoStatus === 'ok' ? hours : null}
-            graphPoint={graphPoint}
+            outTemp={outTemp}
+            outRH={outRH}
+            hours={hours}
             elevation={wxMeta?.grid?.elevation ?? 0}
           />
         </div>
