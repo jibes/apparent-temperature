@@ -206,7 +206,7 @@ body::-webkit-scrollbar-thumb:hover { background: var(--accent); }
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--r);
-  margin-bottom: 0.6rem;
+  margin-bottom: 0.7rem;   /* one shared vertical rhythm for all cards */
   overflow: hidden;
 }
 .section-summary {
@@ -284,7 +284,7 @@ body::-webkit-scrollbar-thumb:hover { background: var(--accent); }
   border-radius: var(--r);
   border: 1px solid var(--border);
   background: var(--surface);
-  margin-bottom: 0.6rem;
+  margin-bottom: 0.7rem;
 }
 .vent-hero.good    { border-color: #166534; background: #14532d22; }
 .vent-hero.bad     { border-color: #991b1b; background: #7f1d1d22; }
@@ -337,6 +337,18 @@ body::-webkit-scrollbar-thumb:hover { background: var(--accent); }
      phone width) so the chip count changing never resizes the hero. */
   height: 3.3rem;
   overflow: hidden;
+}
+/* Wider screens wrap far less — the phone-sized reservations left a big
+   empty block at the hero's bottom. Still fixed heights (per width), just
+   sized for the actual worst case at that width: reasons fit 2 lines, the
+   two chips one row, the window text 2 lines. */
+@media (min-width: 640px) {
+  .vh-reason  { height: calc(2 * 0.78rem * 1.45); -webkit-line-clamp: 2; }
+  .vh-chips   { height: 1.75rem; }
+  .vent-window {
+    height: calc(2 * 0.8rem * 1.5 + 1.2rem + 2px);
+    -webkit-line-clamp: 2;
+  }
 }
 
 .vent-when { padding: 0.75rem 1rem 0.6rem; }
@@ -532,6 +544,10 @@ input[type='range'] {
   flex-direction: column;
   justify-content: center;
   overflow: hidden;
+  /* Anchor + stacking context for the full-card category glow layer
+     (.felt-now::before) — see there. */
+  position: relative;
+  z-index: 0;
 }
 /* Small time label above the headline value — which instant the number
    describes: "Jetzt" (green, live-blinking dot, same language as the graph
@@ -554,11 +570,21 @@ input[type='range'] {
 
 /* Soft category-colored radial glow behind the number: "angenehm" vs.
    "Hitzestress" reads at a glance, not only in the digits. --felt-glow is
-   set only when a felt value exists; otherwise transparent, no glow. */
-.felt-now {
-  width: 100%;
-  border-radius: 16px;
-  background: radial-gradient(58% 95% at 50% 42%,
+   set only when a felt value exists; otherwise transparent, no glow.
+   Rendered as an absolutely-positioned layer filling the WHOLE card (the
+   ::before spans the padded .felt-top, clipped by its rounded corners) —
+   a gradient on .felt-now itself was a visibly smaller faded rectangle
+   floating inside the card's padding. z-index -1 keeps it under the text;
+   the z-index:0 on .felt-top scopes that below-stacking to the card so the
+   layer still paints above the card's own surface background. */
+.felt-now { width: 100%; }
+.felt-now::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background: radial-gradient(70% 95% at 50% 45%,
     color-mix(in srgb, var(--felt-glow, transparent) 11%, transparent),
     transparent 100%);
 }
@@ -640,7 +666,7 @@ input[type='range'] {
   border: 1px solid var(--border);
   border-radius: var(--r);
   padding: 0.75rem 0.8rem 0.6rem;
-  margin-bottom: 0.6rem;
+  margin-bottom: 0.7rem;
 }
 .forecast-head {
   display: flex;
@@ -705,8 +731,12 @@ input[type='range'] {
 .fc-metrics {
   display: flex;
   gap: 0.3rem;
-  margin-bottom: 0.8rem;
+  margin-bottom: 0.7rem;
+  /* Desktop: tiles cap at a sane width and the row centers, instead of five
+     stretched, mostly-empty slabs across the whole 760px container. */
+  justify-content: center;
 }
+.fc-metric { max-width: 9rem; }
 .fc-metric {
   flex: 1 1 0;
   min-width: 0;
