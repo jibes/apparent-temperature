@@ -591,9 +591,15 @@ input[type='range'] {
   border: 1px solid #92400e;
   color: #fcd34d;
   font-weight: 700;
-  padding: 0.02rem 0.45rem;
+  /* Sized to fit INSIDE a normal hint line box (0.78rem × 1.5): no vertical
+     padding, tighter line-height, slightly smaller font — so the chip
+     appearing can never stretch the line and shift the centered content. */
+  font-size: 0.72rem;
+  line-height: 1.25;
+  padding: 0 0.45rem;
   border-radius: 999px;
   white-space: nowrap;
+  vertical-align: baseline;
 }
 .felt-now .ap-val {
   font-size: 2.9rem;
@@ -614,6 +620,15 @@ input[type='range'] {
   color: var(--muted);
   margin: 0.4rem 0 0;
   line-height: 1.5;
+  /* Always exactly 2 lines of space, clamped: the hint flips between one
+     and two lines as content changes (Schwüle chip on/off, range widths,
+     fallback texts) and the felt-top centers its content — without a fixed
+     height every flip would shift the number vertically. */
+  height: calc(2 * 0.78rem * 1.5);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
 /* ── Forecast chart ── */

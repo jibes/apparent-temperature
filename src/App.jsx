@@ -1297,11 +1297,15 @@ function FeltNow({ point, airTemp, dp, when, live, onStep, onJumpLive }) {
 
   // No usable outdoor reading at all (no data yet AND the sliders are on a
   // manual what-if override) — show a placeholder, not a made-up number.
+  // The fallback branches keep the category line as an empty spacer so the
+  // number sits at the same y in every state — toggling "Gefühlt" on/off or
+  // waiting for data must not move it (the felt-top centers its content).
   if (airTemp == null) {
     return (
       <div {...rootProps}>
         {whenEl}
         {valRow(<div className="ap-val">–{' '}°C</div>)}
+        <div className="ap-cat">&nbsp;</div>
         <p className="felt-hint">Warte auf Wetterdaten…</p>
       </div>
     )
@@ -1311,6 +1315,7 @@ function FeltNow({ point, airTemp, dp, when, live, onStep, onJumpLive }) {
       <div {...rootProps}>
         {whenEl}
         {valRow(<div className="ap-val">{fmt1(airTemp)}{' '}°C</div>)}
+        <div className="ap-cat">&nbsp;</div>
         <p className="felt-hint">Lufttemperatur — wähle oben mind. einen weiteren Faktor für „Gefühlt“.</p>
       </div>
     )
