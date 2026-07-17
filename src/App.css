@@ -306,6 +306,9 @@ body::-webkit-scrollbar-thumb:hover { background: var(--accent); }
 }
 .vh-when.live { color: #86efac; }
 .vh-when.live .fc-now-dot { background: #86efac; animation: fc-live-blink 1.4s ease-in-out infinite; }
+/* Manual what-if values are driving the verdict — amber, like other
+   "attention, not live data" signals in the app. */
+.vh-when.manual { color: #fcd34d; }
 .vent-hero.seekable { cursor: pointer; }
 .vh-verdict { font-size: 1.25rem; font-weight: 800; }
 .vent-hero.good    .vh-verdict { color: #86efac; }

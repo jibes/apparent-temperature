@@ -1605,18 +1605,27 @@ function VentTimeline({ hours, Tin, RHin, win, elevM = 0, selTs, onPick }) {
   )
 }
 
-// Ventilation tab. Outdoor conditions are DATA, never hand-edited: live
-// "now" by default, or the tapped hour of the 24h strip — the manual
-// what-if sliders and the graph-import coupling are gone; exploring "was
-// wäre heute Abend?" is a single tap on the timeline, which drives the
-// hero verdict directly.
+// Ventilation tab. Outdoor conditions come from data by default — live
+// "now", or the tapped hour of the 24h strip, which drives the hero verdict
+// directly. A manual override still exists for free-form what-ifs, but
+// tucked away in the Aussen collapsible: moving a slider there switches to
+// manual mode (announced in the hero's time label, where "Jetzt"/the hour
+// normally stands), a timeline tap or a hero tap leaves it again. No graph
+// coupling — that proved unintuitive.
 function LueftenTab({ inTemp, setInTemp, inRH, setInRH, outTemp, outRH, hours, elevation = 0 }) {
   // Selected timeline hour, anchored to its timestamp (like the graph
   // selection) so a data refresh can't silently shift it; null = live now.
   const [selTs, setSelTs] = useState(null)
+  // Manual what-if override ({temp, rh} or null). Session-only by design:
+  // an exploration, not a setting. Highest precedence; starts from the
+  // currently effective values so nudging one slider keeps the other.
+  const [man, setMan] = useState(null)
   const selHour = selTs != null && hours ? hours.find(h => h.ts === selTs) ?? null : null
-  const oTemp = selHour ? selHour.temp : outTemp
-  const oRH   = selHour ? selHour.humidity : outRH
+  const oTemp = man ? man.temp : selHour ? selHour.temp : outTemp
+  const oRH   = man ? man.rh   : selHour ? selHour.humidity : outRH
+  const setManTemp = v => setMan({ temp: v, rh: oRH })
+  const setManRH   = v => setMan({ temp: oTemp, rh: v })
+  const backToNow  = () => { setMan(null); setSelTs(null) }
 
   const verdict   = ventVerdict(inTemp, inRH, oTemp, oRH, elevation)
   const feltIn    = indoorApparentTemp(inTemp, inRH).value
@@ -1642,23 +1651,26 @@ function LueftenTab({ inTemp, setInTemp, inRH, setInRH, outTemp, outRH, hours, e
   }
 
   const hero = VENT_HERO[verdict.short] ?? { title: verdict.short, icon: '' }
-  // Which instant the verdict describes — same time-label language as the
-  // Gefühlt headline: live "Jetzt" or the tapped hour; tapping the hero
-  // returns to live.
-  const when = selHour
-    ? `${WEEKDAY[selHour.time.getDay()]} ${String(selHour.time.getHours()).padStart(2, '0')}:00 · tippen für Jetzt`
-    : 'Jetzt'
+  // What the verdict describes — same time-label language as the Gefühlt
+  // headline: live "Jetzt", the tapped hour, or "Manuell" while the
+  // override sliders are driving it; tapping the hero returns to live.
+  const live = !man && !selHour
+  const when = man
+    ? '✎ Manuell · tippen für Jetzt'
+    : selHour
+      ? `${WEEKDAY[selHour.time.getDay()]} ${String(selHour.time.getHours()).padStart(2, '0')}:00 · tippen für Jetzt`
+      : 'Jetzt'
 
   return (
     <>
       {/* 1 — THE ANSWER. What the user came for, first and unmissable. */}
       <div
-        className={`vent-hero ${verdict.cls} ${selHour ? 'seekable' : ''}`}
-        onClick={selHour ? () => setSelTs(null) : undefined}
-        title={selHour ? 'Zurück zu Jetzt' : undefined}
+        className={`vent-hero ${verdict.cls} ${live ? '' : 'seekable'}`}
+        onClick={live ? undefined : backToNow}
+        title={live ? undefined : 'Zurück zu Jetzt'}
       >
-        <div className={`vh-when ${selHour ? '' : 'live'}`}>
-          {!selHour && <i className="fc-now-dot" />}{when}
+        <div className={`vh-when ${live ? 'live' : ''} ${man ? 'manual' : ''}`}>
+          {live && <i className="fc-now-dot" />}{when}
         </div>
         <div className="vh-verdict">{hero.icon} {hero.title}</div>
         <p className="vh-reason">{ventReason(inTemp, inRH, oTemp, oRH, elevation)}</p>
@@ -1674,7 +1686,7 @@ function LueftenTab({ inTemp, setInTemp, inRH, setInRH, outTemp, outRH, hours, e
       <div className="section-card vent-when">
         {hours
           ? <VentTimeline hours={hours} Tin={inTemp} RHin={inRH} win={win} elevM={elevation}
-              selTs={selTs} onPick={setSelTs} />
+              selTs={selTs} onPick={ts => { setMan(null); setSelTs(ts) }} />
           : <>
               <div className="vt-title section-name muted">Nächste 24 h</div>
               <div className="vt-strip vt-strip-skeleton" />
@@ -1712,16 +1724,24 @@ function LueftenTab({ inTemp, setInTemp, inRH, setInRH, outTemp, outRH, hours, e
         </div>
       </div>
 
-      <div className="section-card vent-inputs">
-        <div className="vent-inputs-head">
+      {/* Outdoor: data by default (chips always show the effective values
+          driving the verdict). The collapsible hides the manual what-if
+          sliders — moving one switches to manual mode, announced in the
+          hero's time label; a timeline or hero tap returns to data. */}
+      <details className="section-card">
+        <summary className="section-summary">
           <span className="section-name">Aussen</span>
           <span className="summary-chips">
             <Chip>{fmt1(oTemp)}{' '}°C</Chip>
             <Chip>{Math.round(oRH)}{' '}%</Chip>
             <Chip cls="felt">≈ {fmt1(feltOut)} °C</Chip>
           </span>
+        </summary>
+        <div className="section-body">
+          <Slider label="Temperatur"       value={Math.round(oTemp * 2) / 2} onChange={setManTemp} min={-30} max={50}  step={0.5} unit="°C" />
+          <Slider label="Luftfeuchtigkeit" value={Math.round(oRH)}           onChange={setManRH}   min={1}   max={100} step={1}   unit="%" />
         </div>
-      </div>
+      </details>
 
       {/* 4 — NERD DATA. The full psychrometrics, opt-in. */}
       <details className="section-card">
@@ -1731,7 +1751,9 @@ function LueftenTab({ inTemp, setInTemp, inRH, setInRH, outTemp, outRH, hours, e
           <span className="section-name muted">Formeln & Methodik</span>
         </summary>
         <div className="section-body">
-          <VentTable Tin={inTemp} RHin={inRH} Tout={outTemp} RHout={outRH} elevM={elevation} />
+          {/* Effective outdoor values (live / selected hour / manual) — the
+              table must never disagree with the hero above it. */}
+          <VentTable Tin={inTemp} RHin={inRH} Tout={oTemp} RHout={oRH} elevM={elevation} />
           <p className="vent-note">
             Wind und Sonne fliessen hier bewusst nicht ein: Sie ändern nicht, <em>ob</em> die
             Aussenluft trockener oder kühler ist. Wind beschleunigt zwar den Luftaustausch
