@@ -284,13 +284,14 @@ function VentTable({ Tin, RHin, Tout, RHout, elevM = 0 }) {
 // off to the side). A mode glyph distinguishes "follows your position" (🧭,
 // GPS re-acquired on every refresh) from a pinned searched place (📍).
 // The search row has explicit submit / cancel and a labeled way back to the
-// device position; Escape cancels too. The refresh icon spins while a load
-// is running — feedback instead of a mystery dead button.
-function GeoBar({ status, location, freshness, locSource, onRefresh, onSearch, onLocate }) {
+// device position; Escape cancels too. No manual refresh button: data
+// refreshes itself (5-min interval, focus/visibility catch-up, GPS follow,
+// and a 30-s silent retry loop after errors) — a button couldn't get
+// anything fresher.
+function GeoBar({ status, location, freshness, locSource, onSearch, onLocate }) {
   const [searching, setSearching] = useState(false)
   const [query, setQuery]         = useState('')
   const inputRef                  = useRef()
-  const busy = status === 'loading' || status === 'locating' || status === 'searching'
 
   useEffect(() => {
     if (searching) inputRef.current?.focus()
@@ -373,14 +374,6 @@ function GeoBar({ status, location, freshness, locSource, onRefresh, onSearch, o
           <span className="geo-chip-find" aria-hidden="true">🔍</span>
         </button>
       </span>
-      {/* Always rendered; disabled + spinning while a load runs so the state
-          is visible instead of a mystery dead button. */}
-      <button
-        className={`geo-icon ${busy ? 'busy' : ''}`}
-        onClick={onRefresh}
-        disabled={busy}
-        title="Neu laden" aria-label="Neu laden"
-      >&#8635;</button>
     </div>
   )
 }
@@ -1853,15 +1846,17 @@ export default function App() {
   }
 
   // Refetch fresh weather for a known location (no geolocation prompt).
-  async function refetchFor(la, lo, name) {
-    setGeoStatus('locating')
+  // `silent` (background refreshes/retries): no status flicker while
+  // working, and a failure keeps whatever is on screen.
+  async function refetchFor(la, lo, name, silent = false) {
+    if (!silent) setGeoStatus('locating')
     try {
       const w = await fetchCurrentWeather(la, lo)
       applyWeather(w)
       fetchHourlyForecast(la, lo).then(setHours).catch(() => setGeoStatus('error'))
       setGeoLocation({ lat: la, lon: lo, name })
       setGeoStatus('ok')
-    } catch { setGeoStatus('error') }
+    } catch { if (!silent) setGeoStatus('error') }
   }
 
   async function searchWeather(query) {
@@ -1884,11 +1879,23 @@ export default function App() {
   // position uninvited. `silent` marks background refreshes (see loadWeather).
   function refresh(silent = false) {
     if (locSource === 'search' && geoLocation?.lat != null) {
-      refetchFor(geoLocation.lat, geoLocation.lon, geoLocation.name)
+      refetchFor(geoLocation.lat, geoLocation.lon, geoLocation.name, silent)
     } else {
       loadWeather(silent)
     }
   }
+
+  // Errors self-heal: while the last fetch failed, retry silently every 30 s
+  // instead of waiting for the 5-min interval — this is what the manual
+  // refresh button used to be for, automated. retryTick re-arms the timer
+  // after each unsuccessful attempt (a success flips geoStatus to 'ok' and
+  // stops the loop).
+  const [retryTick, setRetryTick] = useState(0)
+  useEffect(() => {
+    if (geoStatus !== 'error') return
+    const id = setTimeout(() => { refresh(true); setRetryTick(t => t + 1) }, 30000)
+    return () => clearTimeout(id)
+  }, [geoStatus, retryTick])
 
   // On mount: if we have a saved location, refresh its weather immediately
   // (fast first paint, keeping persisted personal/indoor inputs); when that
@@ -1976,7 +1983,6 @@ export default function App() {
           location={geoLocation}
           freshness={updatedAt ? agoLabel(updatedAt) : null}
           locSource={locSource}
-          onRefresh={() => refresh(false)} /* explicit: the click event must not land in `silent` */
           onSearch={searchWeather}
           onLocate={() => loadWeather(false)} /* explicit: loud — user asked for their position */
         />

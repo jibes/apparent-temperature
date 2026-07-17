@@ -114,9 +114,6 @@ body::-webkit-scrollbar-thumb:hover { background: var(--accent); }
   opacity: 0.55;
   flex-shrink: 0;
 }
-/* Refresh feedback: spin while a load is in flight. */
-@keyframes geo-spin { to { transform: rotate(360deg); } }
-.geo-icon.busy { animation: geo-spin 1s linear infinite; }
 .geo-ok {
   font-size: 0.78rem;
   font-weight: 600;
