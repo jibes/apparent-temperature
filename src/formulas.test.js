@@ -4,6 +4,7 @@ import {
   specificEnthalpy, heatIndex,
   utci, utciCategory, meanRadiantTemp,
   solarElevation, clearSkyGHI, pressureAtElevation,
+  ventScore, bestVentWindow,
 } from './formulas.js'
 
 // ── Psychrometrics (exact, hand-verified) ──────────────────────────────────
@@ -167,5 +168,56 @@ describe('UTCI categories', () => {
   })
   it('classifies extreme cold', () => {
     expect(utciCategory(-45).cls).toBe('very-cold')
+  })
+})
+
+// ── Ventilation window (first-principles score) ─────────────────────────────
+
+describe('ventScore', () => {
+  it('winter: cold, even very humid outdoor air dries strongly → clear window', () => {
+    // 22°C/55% indoor vs 2°C/90% outdoor — the old comfort-box comparison
+    // dismissed this as "too cold"; physically it's the classic Stoßlüften.
+    expect(ventScore(22, 55, 2, 90)).toBeGreaterThan(1)
+  })
+  it('summer: hot humid midday air is a hard no', () => {
+    expect(ventScore(27, 50, 33, 60)).toBe(-Infinity) // wetter AND warmer
+  })
+  it('summer: cool evening air scores well (dries + cools)', () => {
+    expect(ventScore(27, 50, 18, 70)).toBeGreaterThan(1)
+  })
+  it('condensation risk is a hard no', () => {
+    // outdoor dew point (≈25°C) above indoor temperature
+    expect(ventScore(20, 40, 26, 95)).toBe(-Infinity)
+  })
+  it('wind speeds up the exchange → higher score for the same air', () => {
+    expect(ventScore(22, 55, 10, 80, 20)).toBeGreaterThan(ventScore(22, 55, 10, 80, 0))
+  })
+})
+
+describe('bestVentWindow', () => {
+  it('finds the contiguous good run and reports the peak gradient', () => {
+    const now = Date.now()
+    const mk = (i, temp, humidity) => ({
+      ts: now + i * 3600000, time: new Date(now + i * 3600000), temp, humidity, wind: 5,
+    })
+    // 3 mild hours (no meaningful benefit), 3 cold-dry hours, mild again
+    const hours = [
+      mk(0, 21, 55), mk(1, 21, 55), mk(2, 21, 55),
+      mk(3, 5, 80), mk(4, 4, 80), mk(5, 5, 80),
+      mk(6, 21, 55), mk(7, 21, 55),
+    ]
+    const win = bestVentWindow(hours, 22, 55, 0, now)
+    expect(win).not.toBeNull()
+    expect(win.start.getTime()).toBe(hours[3].time.getTime())
+    expect(win.end.getTime()).toBe(hours[5].time.getTime())
+    expect(win.dAH).toBeGreaterThan(3)   // strong drying
+    expect(win.dT).toBeGreaterThan(15)   // strong gradient → short airing
+  })
+  it('returns null when outdoor air offers no meaningful benefit', () => {
+    const now = Date.now()
+    const hours = Array.from({ length: 8 }, (_, i) => ({
+      ts: now + i * 3600000, time: new Date(now + i * 3600000), temp: 21.5, humidity: 56, wind: 0,
+    }))
+    expect(bestVentWindow(hours, 22, 55, 0, now)).toBeNull()
   })
 })

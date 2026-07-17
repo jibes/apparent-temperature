@@ -1,7 +1,7 @@
 import { useState, useEffect, useLayoutEffect, useRef, useMemo } from 'react'
 import {
   utci, utciCategory, meanRadiantTemp, clearSkyGHI, solarElevation,
-  ventilationAssessment, indoorApparentTemp,
+  ventilationAssessment, indoorApparentTemp, bestVentWindow, COMFORT,
   dewPoint, absoluteHumidity,
 } from './formulas.js'
 import { fetchCurrentWeather, fetchHourlyForecast, searchLocation, reverseGeocode, MODEL_INFO } from './weather.js'
@@ -1501,40 +1501,6 @@ function FeltTab({ hours, wxMeta, gridPlace, lat, lon, selTs, setSelTs, visible 
   )
 }
 
-// Thermal-comfort zone (ASHRAE/DIN comfort box). Penalty = how far a (T, RH)
-// state lies outside it, in °C-equivalent units (RH weighted ~0.1°C per %).
-const COMFORT = { tLo: 20, tHi: 24, rhLo: 40, rhHi: 60 }
-function comfortPenalty(T, RH) {
-  const tp = T < COMFORT.tLo ? COMFORT.tLo - T : T > COMFORT.tHi ? T - COMFORT.tHi : 0
-  const rp = RH < COMFORT.rhLo ? COMFORT.rhLo - RH : RH > COMFORT.rhHi ? RH - COMFORT.rhHi : 0
-  return tp + 0.1 * rp
-}
-
-// Best ventilation window in the next 24 h to move indoor air toward the
-// comfort zone: a run of hours where outdoor air is meaningfully closer to
-// comfort than indoor (and won't condense). Returns the most-improving run.
-// In winter outdoor air scores far worse on temperature, so no window is found.
-function bestVentWindow(hours, Tin, RHin) {
-  if (!hours || !hours.length) return null
-  const inPen = comfortPenalty(Tin, RHin)
-  const now = Date.now()
-  const fut = hours.filter(h => h.ts + 3600000 > now).slice(0, 24)
-  let best = null, cur = null
-  for (const h of fut) {
-    const improve = inPen - comfortPenalty(h.temp, h.humidity) // >0 → outdoor closer to comfort
-    const ok = improve > 0.5 && dewPoint(h.temp, h.humidity) < Tin
-    if (ok) {
-      if (!cur) cur = { start: h.time, end: h.time, maxImprove: 0 }
-      cur.end = h.time
-      cur.maxImprove = Math.max(cur.maxImprove, improve)
-    } else if (cur) {
-      if (!best || cur.maxImprove > best.maxImprove) best = cur
-      cur = null
-    }
-  }
-  if (cur && (!best || cur.maxImprove > best.maxImprove)) best = cur
-  return best
-}
 
 function fmtSlot(start, end) {
   const today = new Date().toDateString() === start.toDateString()
@@ -1630,8 +1596,7 @@ function LueftenTab({ inTemp, setInTemp, inRH, setInRH, outTemp, outRH, hours, e
   const verdict   = ventVerdict(inTemp, inRH, oTemp, oRH, elevation)
   const feltIn    = indoorApparentTemp(inTemp, inRH).value
   const feltOut   = indoorApparentTemp(oTemp, oRH).value
-  const win       = bestVentWindow(hours, inTemp, inRH)
-  const comfyNow  = comfortPenalty(inTemp, inRH) < 0.5
+  const win       = bestVentWindow(hours, inTemp, inRH, elevation)
 
   // What opening the windows would actually DO, as outcome chips. Capped at
   // two (moisture + heat) so the chip area stays within its reserved height;
@@ -1695,17 +1660,33 @@ function LueftenTab({ inTemp, setInTemp, inRH, setInRH, outTemp, outRH, hours, e
         {!hours
           ? <p className="vent-window neutral">Vorschau lädt…</p>
           : win
-            ? <p className="vent-window good">
-                🪟 Bestes Fenster: <strong>{fmtSlot(win.start, win.end)}</strong> –
-                {' '}bringt das Raumklima näher an den Wohlfühlbereich (~20–24°C, 40–60%).
-              </p>
-            : comfyNow
-              ? <p className="vent-window neutral">
-                  Innenklima liegt bereits im Wohlfühlbereich (~20–24°C, 40–60%) – Lüften v.a. für frische Luft.
-                </p>
-              : <p className="vent-window neutral">
-                  In den nächsten 24 h bringt die Aussenluft das Raumklima dem Wohlfühlbereich nicht näher (z.&nbsp;B. im Winter zu kalt).
-                </p>}
+            ? (() => {
+                // What the window achieves + how long to air: a strong
+                // in/out gradient (and wind) exchanges the room's air much
+                // faster, so the needed duration shrinks with it.
+                const dries = win.dAH > 0.3
+                const cools = win.dT > 2 && inTemp > COMFORT.tHi
+                const does = dries && cools ? 'trocknet und kühlt'
+                  : dries ? 'trocknet die Raumluft'
+                  : cools ? 'kühlt den Raum'
+                  : 'frischt die Luft auf'
+                const grad = Math.abs(win.dT) + (win.wind ?? 0) / 5
+                const dur = grad >= 8 ? 'kurzes Stoßlüften (5–10 min) genügt'
+                  : grad >= 4 ? 'ca. 10–20 min lüften'
+                  : 'eher 20–30 min lüften'
+                // A run spanning (nearly) the whole day means "anytime",
+                // not a specific slot — say so instead of "22–22 Uhr".
+                const allDay = win.end - win.start >= 20 * 3600000
+                return (
+                  <p className="vent-window good">
+                    🪟 Bestes Fenster: <strong>{allDay ? 'fast durchgehend' : fmtSlot(win.start, win.end)}</strong> – {does} ·
+                    {' '}ΔT {Math.round(Math.abs(win.dT))} °C → {dur}.
+                  </p>
+                )
+              })()
+            : <p className="vent-window neutral">
+                In den nächsten 24 h bietet die Aussenluft keinen klaren Vorteil – nur kurz für Frischluft (CO₂) lüften.
+              </p>}
       </div>
 
       {/* 3 — THE INPUTS. Indoor is the only thing the app can't know — always
@@ -1755,10 +1736,13 @@ function LueftenTab({ inTemp, setInTemp, inRH, setInRH, outTemp, outRH, hours, e
               table must never disagree with the hero above it. */}
           <VentTable Tin={inTemp} RHin={inRH} Tout={oTemp} RHout={oRH} elevM={elevation} />
           <p className="vent-note">
-            Wind und Sonne fliessen hier bewusst nicht ein: Sie ändern nicht, <em>ob</em> die
-            Aussenluft trockener oder kühler ist. Wind beschleunigt zwar den Luftaustausch
-            (schnelleres Durchlüften), die Empfehlung selbst hängt aber nur von Temperatur und
-            Feuchte beider Seiten ab.
+            Die Empfehlung (<em>ob</em> lüften) hängt nur von Temperatur und Feuchte beider
+            Seiten ab – Wind und Sonne ändern daran nichts. Das <em>beste Fenster</em> bewertet
+            jede Stunde nach Trocknungseffekt (Δ&nbsp;abs.&nbsp;Feuchte, wirkt auch im Winter:
+            kalte Luft ist absolut trocken), gerichtetem Temperatureffekt (kurzes Lüften kühlt
+            Wände kaum aus – Kälte zählt wenig, Abkühlung bei überwärmtem Raum viel) und
+            Austauschgeschwindigkeit: großes Temperaturgefälle und Wind tauschen die Raumluft
+            schneller – daher die kürzere empfohlene Dauer.
           </p>
         </div>
       </details>

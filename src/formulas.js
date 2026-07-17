@@ -438,6 +438,67 @@ export function indoorApparentTemp(T, RH) {
 //   1. Moisture: absolute humidity comparison (primary mold/comfort signal)
 //   2. Thermal: specific enthalpy comparison (latent + sensible heat combined)
 //   3. Condensation risk: outdoor dew point > indoor surface temperature (proxy: T_in)
+// ── Ventilation window (first principles) ───────────────────────────────────
+// "When should I air out in the next 24 h, and for how long?"
+//
+// The benefit of a short Stoßlüften is (what the exchanged air improves) ×
+// (how much air actually gets exchanged in those minutes):
+//
+// - MOISTURE is the dominant, season-independent driver (mold prevention,
+//   comfort): −ΔAH = AH_in − AH_out [g/m³]. This is exactly why winter
+//   airing works: near-freezing air is absolutely dry even at 90 % RH, so
+//   it dries the room strongly. (A previous version compared the outdoor
+//   air's own distance to the comfort box and dismissed winter as "too
+//   cold" — the opposite of standard building-physics advice.)
+// - TEMPERATURE enters direction-aware with a small weight: minutes of
+//   airing barely cool walls and furniture (thermal mass), so winter cold
+//   is a minor cost, not a blocker. When the room is TOO WARM, cooler
+//   outdoor air is a genuine benefit (summer-night airing) and hotter
+//   midday air a cost.
+// - EXCHANGE SPEED scales with the in/out temperature gradient (stack
+//   effect) and wind: a bigger gradient replaces more room air in the same
+//   few minutes, multiplying the whole benefit — and shortening the needed
+//   duration (dT/wind are returned so the UI can say "5–10 min genügen").
+// - HARD EXCLUSIONS, same physics as the hourly verdict: condensation risk,
+//   and hours that would make the room both wetter and warmer.
+export const COMFORT = { tLo: 20, tHi: 24, rhLo: 40, rhHi: 60 }
+
+export function ventScore(Tin, RHin, Tout, RHout, wind = 0, elevM = 0) {
+  const a = ventilationAssessment(Tin, RHin, Tout, RHout, elevM)
+  if (a.condensationRisk) return -Infinity
+  if (a.deltaAH > 0.3 && a.deltaH > 0.5) return -Infinity // wetter AND warmer
+  const moisture = -a.deltaAH                 // >0 → dries the room [g/m³]
+  const dT = Tin - Tout                       // >0 → outside cooler
+  const thermal =
+    Tin > COMFORT.tHi ? 0.25 * Math.max(-2, dT)   // too warm: cooling helps; warmer outside costs (capped)
+    : Tin < COMFORT.tLo ? -0.05 * Math.max(0, dT) // already cool: extra cold costs a little
+    : -0.03 * Math.max(0, dT - 8)                 // comfy: only extreme cold costs
+  const speed = 1 + Math.min(0.5, Math.abs(dT) / 20) + Math.min(0.3, wind / 40)
+  return (moisture + thermal) * speed
+}
+
+// Best contiguous run of hours scoring above a meaningful-benefit threshold.
+// Returns { start, end, score, dT, dAH, wind } (peak hour's numbers) or null.
+export function bestVentWindow(hours, Tin, RHin, elevM = 0, now = Date.now()) {
+  if (!hours || !hours.length) return null
+  const fut = hours.filter(h => h.ts + 3600000 > now).slice(0, 24)
+  let best = null, cur = null
+  const close = () => { if (cur && (!best || cur.score > best.score)) best = cur; cur = null }
+  for (const h of fut) {
+    const s = ventScore(Tin, RHin, h.temp, h.humidity, h.wind ?? 0, elevM)
+    if (s > 1) {
+      if (!cur) cur = { start: h.time, end: h.time, score: -Infinity }
+      cur.end = h.time
+      if (s > cur.score) {
+        const a = ventilationAssessment(Tin, RHin, h.temp, h.humidity, elevM)
+        Object.assign(cur, { score: s, dT: Tin - h.temp, dAH: -a.deltaAH, wind: h.wind ?? 0 })
+      }
+    } else close()
+  }
+  close()
+  return best
+}
+
 // `elevationM` = site elevation; indoor and outdoor share it, so it enters
 // only through the enthalpy magnitudes (site pressure), never asymmetrically.
 export function ventilationAssessment(Tin, RHin, Tout, RHout, elevationM = 0) {
