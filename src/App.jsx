@@ -1025,7 +1025,7 @@ function ForecastChart({ hours, lat, lon, elevation, active, selTs, setSelTs, vi
           <button
             key={t.i}
             type="button"
-            className="fc-day"
+            className={`fc-day ${t.date.toDateString() === hours[nowIdx].time.toDateString() ? 'today' : ''}`}
             onClick={() => { if (scrollRef.current) scrollRef.current.scrollLeft = Math.max(0, x(t.i) - 4) }}
             title={`Zum ${WEEKDAY[t.date.getDay()]} ${t.date.getDate()}.${t.date.getMonth() + 1}. scrollen`}
           >

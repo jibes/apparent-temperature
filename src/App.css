@@ -11,6 +11,14 @@
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
+/* Keyboard-only focus ring (mouse/touch don't trigger :focus-visible) —
+   the app is full of custom buttons/rows that otherwise gave keyboard
+   users no cue where they are. */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
 html {
   /* Reserve the vertical scrollbar's width up front so switching between the
      Gefühlt and Lüften tabs (very different content heights) never shifts
@@ -550,19 +558,23 @@ input[type='range'] {
   color: var(--muted);
 }
 
-/* ── Top: single headline "Gefühlt" value, borderless ── */
+/* ── Top: single headline "Gefühlt" value — a proper surface card, matching
+   the app's boxed design language (top bar, forecast, hero are all cards;
+   this was the one floating unboxed area). The category glow renders inside
+   the card. ── */
 .felt-top {
   text-align: center;
-  padding: 0.1rem 0.3rem 0.6rem;
-  margin-bottom: 0.1rem;
-  /* Fixed floor sized for the tallest realistic case (value + category +
-     a 2-line hint, e.g. once the Schwüle clause appears) — content that
-     varies (fallback vs. full state, Schwüle on/off, wrapping) then just
-     centers within this space instead of growing/shrinking it and pushing
-     the metric tiles and graph below up and down as it changes. */
-  height: 9rem;                 /* fixed, not min: never grows/shrinks
-                                   (sized for value + category + 2-line hint
-                                   + the small time label) */
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  padding: 0.5rem 0.6rem;
+  margin-bottom: 0.7rem;
+  /* Fixed, not min: content that varies (fallback vs. full state, Schwüle
+     chip on/off, time label) centers within this space instead of growing/
+     shrinking it and pushing the metric tiles and graph below up and down.
+     Sized (border-box) for label + value + category + 2-line hint plus the
+     card padding. */
+  height: 10rem;
   display: flex;
   flex-direction: column;
   justify-content: center;
@@ -915,6 +927,12 @@ input[type='range'] {
   transition: background 0.15s, opacity 0.15s;
 }
 .fc-rrow:hover { background: color-mix(in srgb, var(--text) 6%, transparent); }
+/* The isolated (clicked) row gets the app's standard "selected pill" look —
+   before, only the OTHER rows dimmed and the active one looked unchanged. */
+.fc-rrow[aria-pressed="true"] {
+  background: #2a2f55;
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
 .fc-rrow-dim { opacity: 0.35; }
 .fc-rgroup-children {
   display: flex;
@@ -976,6 +994,9 @@ input[type='range'] {
   transition: border-color 0.15s;
 }
 .fc-day:hover { border-color: var(--accent); }
+/* Today stands out — the anchor when scanning the 16-day row. */
+.fc-day.today { border-color: var(--accent); background: #2a2f55; }
+.fc-day.today .fc-day-name { color: var(--text); }
 .fc-day-name {
   font-size: 0.62rem;
   font-weight: 700;
