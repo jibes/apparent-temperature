@@ -81,6 +81,34 @@ body::-webkit-scrollbar-thumb:hover { background: var(--accent); }
   display: flex;
   justify-content: center;
 }
+/* The status chip IS the button that opens the search — one obvious tap
+   target instead of a separate bare icon. Inherits its tone (geo-ok /
+   geo-msg) and adds interactivity affordances: pointer, hover accent, and
+   a small trailing magnifier hinting at tap-to-search. */
+.geo-chip {
+  font: inherit;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  max-width: 100%;
+  transition: border-color 0.15s;
+}
+.geo-chip:hover { border-color: var(--accent); }
+.geo-chip-text {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+.geo-chip-find {
+  font-size: 0.62rem;
+  opacity: 0.55;
+  flex-shrink: 0;
+}
+/* Refresh feedback: spin while a load is in flight. */
+@keyframes geo-spin { to { transform: rotate(360deg); } }
+.geo-icon.busy { animation: geo-spin 1s linear infinite; }
 .geo-ok {
   font-size: 0.78rem;
   font-weight: 600;

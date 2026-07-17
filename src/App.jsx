@@ -279,22 +279,30 @@ function VentTable({ Tin, RHin, Tout, RHout, elevM = 0 }) {
 
 // Geo status + location search
 
-function GeoBar({ status, location, freshness, onRefresh, onSearch, onLocate }) {
+// Location bar. The chip itself is the tap target for changing the place
+// (opens the search row — one obvious affordance instead of a bare 🔍 icon
+// off to the side). A mode glyph distinguishes "follows your position" (🧭,
+// GPS re-acquired on every refresh) from a pinned searched place (📍).
+// The search row has explicit submit / cancel and a labeled way back to the
+// device position; Escape cancels too. The refresh icon spins while a load
+// is running — feedback instead of a mystery dead button.
+function GeoBar({ status, location, freshness, locSource, onRefresh, onSearch, onLocate }) {
   const [searching, setSearching] = useState(false)
   const [query, setQuery]         = useState('')
   const inputRef                  = useRef()
+  const busy = status === 'loading' || status === 'locating' || status === 'searching'
 
   useEffect(() => {
     if (searching) inputRef.current?.focus()
   }, [searching])
 
+  function close() { setSearching(false); setQuery('') }
   function submit(e) {
     e.preventDefault()
     const q = query.trim()
     if (!q) return
     onSearch(q)
-    setSearching(false)
-    setQuery('')
+    close()
   }
 
   if (searching) {
@@ -303,60 +311,74 @@ function GeoBar({ status, location, freshness, onRefresh, onSearch, onLocate }) 
         <button
           type="button"
           className="geo-icon"
-          onClick={() => { setSearching(false); onLocate() }}
-          title="Eigenen Standort verwenden"
-          aria-label="Standort verwenden"
-        >📍</button>
+          onClick={() => { close(); onLocate() }}
+          title="Meinen Standort verwenden"
+          aria-label="Meinen Standort verwenden"
+        >🧭</button>
         <input
           ref={inputRef}
           className="geo-search"
           type="search"
           value={query}
           onChange={e => setQuery(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Escape') close() }}
           placeholder="Ort suchen…"
           enterKeyHint="search"
         />
         <button type="submit" className="geo-icon" title="Suchen" aria-label="Suchen">🔍</button>
+        <button type="button" className="geo-icon" onClick={close} title="Abbrechen" aria-label="Abbrechen">✕</button>
       </form>
     )
   }
 
+  // Chip content + tone per status; freshness folds into the chip instead
+  // of its own row. The chip lives in a flex:1 wrapper so its varying text
+  // width can't push the refresh icon sideways.
+  const modeGlyph = locSource === 'search' ? '📍' : '🧭'
+  const modeTitle = locSource === 'search'
+    ? 'Fester Ort (gesucht) – tippen zum Ändern'
+    : 'Folgt deinem Standort – tippen zum Ändern'
+  const [cls, content] =
+    status === 'loading'
+      // 'loading' = acquiring the device position; 'locating' = fetching
+      // weather for already-known coordinates — saying "Standort wird
+      // ermittelt" for the latter (e.g. refreshing a searched place) was
+      // simply wrong.
+      ? ['geo-msg loading', <>Standort wird ermittelt…</>]
+      : status === 'locating'
+      ? ['geo-msg loading', <>Aktualisiere…</>]
+      : status === 'ok' && location
+        ? ['geo-ok', <>
+            {modeGlyph}{' '}{location.name ?? `${location.lat.toFixed(2)}, ${location.lon.toFixed(2)}`}
+            {freshness && <em> · {freshness}</em>}
+          </>]
+        : status === 'searching'
+          ? ['geo-msg loading', <>Suche…</>]
+          : status === 'notfound'
+            ? ['geo-msg warn', <>Ort nicht gefunden – erneut suchen</>]
+            : status === 'error' && freshness
+              ? ['geo-msg warn', <>Aktualisierung fehlgeschlagen <em>· {freshness}</em></>]
+              : ['geo-msg warn', <>Standort wählen…</>]
+
   return (
     <div className="geo-bar">
-      {/* Freshness folds into whichever status chip is showing, instead of
-          its own row — keeps the header to one compact line. The chip lives
-          in a flex:1 wrapper so its varying text width can't push the icons
-          sideways: they stay pinned at the right edge in every state. */}
       <span className="geo-status">
-        {status === 'loading' || status === 'locating'
-          ? <span className="geo-msg loading">Standort wird ermittelt…</span>
-          : status === 'ok' && location
-            ? <span className="geo-ok">
-                📍{' '}{location.name ?? `${location.lat.toFixed(2)}, ${location.lon.toFixed(2)}`}
-                {freshness && <em> · {freshness}</em>}
-              </span>
-            : status === 'searching'
-              ? <span className="geo-msg loading">Suche…</span>
-              : status === 'notfound'
-                ? <span className="geo-msg warn">Ort nicht gefunden</span>
-                : status === 'error' && freshness
-                  ? <span className="geo-msg warn">Aktualisierung fehlgeschlagen <em>· {freshness}</em></span>
-                  : <span className="geo-msg warn">Standort nicht verfügbar</span>
-        }
+        <button
+          type="button"
+          className={`geo-chip ${cls}`}
+          onClick={() => setSearching(true)}
+          title={status === 'ok' ? modeTitle : 'Ort suchen'}
+        >
+          <span className="geo-chip-text">{content}</span>
+          <span className="geo-chip-find" aria-hidden="true">🔍</span>
+        </button>
       </span>
+      {/* Always rendered; disabled + spinning while a load runs so the state
+          is visible instead of a mystery dead button. */}
       <button
-        className="geo-icon"
-        onClick={() => setSearching(true)}
-        title="Ort suchen"
-        aria-label="Ort suchen"
-      >🔍</button>
-      {/* Always rendered, merely disabled while a load is already running —
-          conditional rendering made the icons shift sideways on every
-          status change. */}
-      <button
-        className="geo-icon"
+        className={`geo-icon ${busy ? 'busy' : ''}`}
         onClick={onRefresh}
-        disabled={status === 'loading' || status === 'locating' || status === 'searching'}
+        disabled={busy}
         title="Neu laden" aria-label="Neu laden"
       >&#8635;</button>
     </div>
@@ -1953,9 +1975,10 @@ export default function App() {
           status={geoStatus}
           location={geoLocation}
           freshness={updatedAt ? agoLabel(updatedAt) : null}
+          locSource={locSource}
           onRefresh={() => refresh(false)} /* explicit: the click event must not land in `silent` */
           onSearch={searchWeather}
-          onLocate={loadWeather}
+          onLocate={() => loadWeather(false)} /* explicit: loud — user asked for their position */
         />
       </div>
 
