@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest'
 import {
   saturationPressure, vaporPressure, dewPoint, absoluteHumidity,
-  specificEnthalpy, heatIndex, windChill,
-  utci, utciCategory, meanRadiantTemp, clearSkyMax,
+  specificEnthalpy, heatIndex,
+  utci, utciCategory, meanRadiantTemp,
   solarElevation, clearSkyGHI, pressureAtElevation,
 } from './formulas.js'
 
@@ -83,18 +83,11 @@ describe('heat index', () => {
   })
 })
 
-// ── Wind chill (EC/NWS 2001) ────────────────────────────────────────────────
-
-describe('wind chill', () => {
-  it('at -5°C, 30 km/h ≈ -13.0°C', () => {
-    expect(windChill(-5, 30)).toBeCloseTo(-13.0, 0)
-  })
-  it('colder with more wind', () => {
-    expect(windChill(-5, 50)).toBeLessThan(windChill(-5, 10))
-  })
-})
-
 // ── Mean radiant temp & clear-sky ───────────────────────────────────────────
+
+// Composition the app actually uses (clearSkyAt): GHI from the solar
+// elevation at a place & instant.
+const ghiAt = (lat, lon, date) => clearSkyGHI(solarElevation(lat, lon, date))
 
 describe('solar / radiant model', () => {
   it('MRT equals air temp with no sun', () => {
@@ -104,22 +97,22 @@ describe('solar / radiant model', () => {
     expect(meanRadiantTemp(20, 800)).toBeCloseTo(40, 6)
   })
   it('clear-sky peaks ≈ 1037 W/m² with sun overhead (lat 23.45°, summer solstice noon)', () => {
-    const v = clearSkyMax(23.45, 0, new Date('2025-06-21T12:00:00Z'))
+    const v = ghiAt(23.45, 0, new Date('2025-06-21T12:00:00Z'))
     expect(v).toBeGreaterThan(1020)
     expect(v).toBeLessThan(1045)
   })
   it('clear-sky much weaker in winter at 50°N', () => {
-    const v = clearSkyMax(50, 0, new Date('2025-12-21T12:00:00Z'))
+    const v = ghiAt(50, 0, new Date('2025-12-21T12:00:00Z'))
     expect(v).toBeGreaterThan(220)
     expect(v).toBeLessThan(290)
   })
   it('summer sun stronger than winter sun at same latitude', () => {
-    const summer = clearSkyMax(50, 0, new Date('2025-06-21T12:00:00Z'))
-    const winter = clearSkyMax(50, 0, new Date('2025-12-21T12:00:00Z'))
+    const summer = ghiAt(50, 0, new Date('2025-06-21T12:00:00Z'))
+    const winter = ghiAt(50, 0, new Date('2025-12-21T12:00:00Z'))
     expect(summer).toBeGreaterThan(winter * 2)
   })
   it('zero at night', () => {
-    expect(clearSkyMax(50, 0, new Date('2025-06-21T00:00:00Z'))).toBe(0)
+    expect(ghiAt(50, 0, new Date('2025-06-21T00:00:00Z'))).toBe(0)
   })
 })
 

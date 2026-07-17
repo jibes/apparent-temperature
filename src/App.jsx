@@ -2,8 +2,7 @@ import { useState, useEffect, useLayoutEffect, useRef, useMemo } from 'react'
 import {
   utci, utciCategory, meanRadiantTemp, clearSkyGHI, solarElevation,
   ventilationAssessment, indoorApparentTemp,
-  dewPoint,
-  absoluteHumidity, specificEnthalpy,
+  dewPoint, absoluteHumidity,
 } from './formulas.js'
 import { fetchCurrentWeather, fetchHourlyForecast, searchLocation, reverseGeocode, MODEL_INFO } from './weather.js'
 import './App.css'

@@ -157,8 +157,7 @@ body::-webkit-scrollbar-thumb:hover { background: var(--accent); }
   flex-shrink: 0;
   padding: 0;
 }
-.geo-icon:hover:not(:disabled) { color: var(--text); border-color: var(--accent); }
-.geo-icon:disabled { opacity: 0.4; cursor: default; }
+.geo-icon:hover { color: var(--text); border-color: var(--accent); }
 
 .geo-search {
   flex: 1;
@@ -478,20 +477,6 @@ input[type='range'] {
   pointer-events: none;
 }
 
-/* ── Felt-now headline value (base; sizing overridden by .felt-now) ── */
-.ap-val {
-  font-size: 2.2rem;
-  font-weight: 800;
-  letter-spacing: -1.5px;
-  line-height: 1;
-  font-variant-numeric: tabular-nums;
-}
-.ap-cat {
-  font-size: 0.95rem;
-  font-weight: 700;
-  margin-bottom: 0.4rem;
-}
-
 .vent-note {
   font-size: 0.76rem;
   line-height: 1.55;
@@ -640,6 +625,7 @@ input[type='range'] {
   font-size: 0.95rem;
   font-weight: 700;
   margin-top: 0.25rem;
+  margin-bottom: 0.4rem;  /* from the removed base .ap-cat rule — load-bearing */
   color: var(--felt-color, var(--text));
 }
 .felt-hint {

@@ -96,18 +96,6 @@ export function heatIndex(T_C, RH) {
   return ((HI - 32) * 5) / 9 // → °C
 }
 
-// Wind chill (Environment Canada / NWS, 2001 revision) [°C, km/h → °C]
-// Calibrated for human face at 1.5 m height, walking pace 1.34 m/s.
-// Valid: T ≤ 10°C, v ≥ 4.8 km/h
-export function windChill(T, v) {
-  return (
-    13.12 +
-    0.6215 * T -
-    11.37 * Math.pow(v, 0.16) +
-    0.3965 * T * Math.pow(v, 0.16)
-  )
-}
-
 // UTCI polynomial approximation (Bröde et al. 2012, Int J Biometeorol 56:481-494)
 // 6th-order polynomial in 4 variables: Ta [°C], vel [m/s], d_tr [°C], Pa [kPa]
 // Coefficients from the ladybug-tools reference implementation (faithful to Bröde 2012).
@@ -174,13 +162,6 @@ export function clearSkyGHI(elevDeg, elevationM = 0) {
   if (cosZ <= 0) return 0
   const altFactor = 1 + 0.08 * Math.min(4, Math.max(0, elevationM) / 1000)
   return Math.max(0, altFactor * 1098 * cosZ * Math.exp(-0.057 / cosZ))
-}
-
-// Current clear-sky ceiling [W/m²] for a place & instant — the strongest the
-// sun can get *right now*. Captures both season (declination) and time of day
-// (hour angle): low morning/evening sun is weak, night is zero.
-export function clearSkyMax(lat, lon = 10, date = new Date(), elevationM = 0) {
-  return clearSkyGHI(solarElevation(lat, lon, date), elevationM)
 }
 
 export function utci(Ta, RH, va_kmh, Tr = null) {
