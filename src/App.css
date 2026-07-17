@@ -73,6 +73,14 @@ body::-webkit-scrollbar-thumb:hover { background: var(--accent); }
      search field swapping in never changes the bar's height. */
   height: 3rem;
 }
+/* flex:1 status region — the chip centers within it, the icons after it sit
+   pinned at the bar's right edge regardless of the chip text's width. */
+.geo-status {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  justify-content: center;
+}
 .geo-ok {
   font-size: 0.78rem;
   font-weight: 600;
@@ -116,7 +124,8 @@ body::-webkit-scrollbar-thumb:hover { background: var(--accent); }
   flex-shrink: 0;
   padding: 0;
 }
-.geo-icon:hover { color: var(--text); border-color: var(--accent); }
+.geo-icon:hover:not(:disabled) { color: var(--text); border-color: var(--accent); }
+.geo-icon:disabled { opacity: 0.4; cursor: default; }
 
 .geo-search {
   flex: 1;

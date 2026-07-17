@@ -324,31 +324,41 @@ function GeoBar({ status, location, freshness, onRefresh, onSearch, onLocate }) 
   return (
     <div className="geo-bar">
       {/* Freshness folds into whichever status chip is showing, instead of
-          its own row — keeps the header to one compact line. */}
-      {status === 'loading' || status === 'locating'
-        ? <span className="geo-msg loading">Standort wird ermittelt…</span>
-        : status === 'ok' && location
-          ? <span className="geo-ok">
-              📍{' '}{location.name ?? `${location.lat.toFixed(2)}, ${location.lon.toFixed(2)}`}
-              {freshness && <em> · {freshness}</em>}
-            </span>
-          : status === 'searching'
-            ? <span className="geo-msg loading">Suche…</span>
-            : status === 'notfound'
-              ? <span className="geo-msg warn">Ort nicht gefunden</span>
-              : status === 'error' && freshness
-                ? <span className="geo-msg warn">Aktualisierung fehlgeschlagen <em>· {freshness}</em></span>
-                : <span className="geo-msg warn">Standort nicht verfügbar</span>
-      }
+          its own row — keeps the header to one compact line. The chip lives
+          in a flex:1 wrapper so its varying text width can't push the icons
+          sideways: they stay pinned at the right edge in every state. */}
+      <span className="geo-status">
+        {status === 'loading' || status === 'locating'
+          ? <span className="geo-msg loading">Standort wird ermittelt…</span>
+          : status === 'ok' && location
+            ? <span className="geo-ok">
+                📍{' '}{location.name ?? `${location.lat.toFixed(2)}, ${location.lon.toFixed(2)}`}
+                {freshness && <em> · {freshness}</em>}
+              </span>
+            : status === 'searching'
+              ? <span className="geo-msg loading">Suche…</span>
+              : status === 'notfound'
+                ? <span className="geo-msg warn">Ort nicht gefunden</span>
+                : status === 'error' && freshness
+                  ? <span className="geo-msg warn">Aktualisierung fehlgeschlagen <em>· {freshness}</em></span>
+                  : <span className="geo-msg warn">Standort nicht verfügbar</span>
+        }
+      </span>
       <button
         className="geo-icon"
         onClick={() => setSearching(true)}
         title="Ort suchen"
         aria-label="Ort suchen"
       >🔍</button>
-      {(status === 'ok' || status === 'denied' || status === 'error' || status === 'notfound') && (
-        <button className="geo-icon" onClick={onRefresh} title="Neu laden" aria-label="Neu laden">&#8635;</button>
-      )}
+      {/* Always rendered, merely disabled while a load is already running —
+          conditional rendering made the icons shift sideways on every
+          status change. */}
+      <button
+        className="geo-icon"
+        onClick={onRefresh}
+        disabled={status === 'loading' || status === 'locating' || status === 'searching'}
+        title="Neu laden" aria-label="Neu laden"
+      >&#8635;</button>
     </div>
   )
 }
@@ -1514,7 +1524,17 @@ const VENT_HERO = {
 function VentTimeline({ hours, Tin, RHin, win, elevM = 0 }) {
   const now = Date.now()
   const fut = hours.filter(h => h.ts + 3600000 > now).slice(0, 24)
-  if (!fut.length) return null
+  // Fully stale data (no future hours): keep the card's exact shape with an
+  // empty strip rather than returning null and collapsing it.
+  if (!fut.length) {
+    return (
+      <div className="vent-timeline">
+        <div className="vt-title section-name muted">Nächste 24 h</div>
+        <div className="vt-strip vt-strip-skeleton" />
+        <div className="vt-labels" />
+      </div>
+    )
+  }
   const inWin = h => win && h.time >= win.start && h.time <= win.end
   return (
     <div className="vent-timeline">
