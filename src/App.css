@@ -378,6 +378,9 @@ body::-webkit-scrollbar-thumb:hover { background: var(--accent); }
 .vt-cell.best    { opacity: 1; box-shadow: inset 0 -3px 0 #fff9; }
 /* the tapped hour driving the hero verdict */
 .vt-cell.sel     { opacity: 1; box-shadow: inset 0 0 0 2px #fff; }
+/* Inset ring instead of the global outer outline: the strip's
+   overflow:hidden (rounded corners) would clip an outline away. */
+.vt-cell:focus-visible { outline: none; box-shadow: inset 0 0 0 2px var(--accent); }
 /* Fixed height so the empty skeleton label row matches the real one. */
 .vt-labels { display: flex; margin-top: 0.15rem; height: 0.75rem; }
 .vt-lab {

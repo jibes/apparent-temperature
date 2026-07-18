@@ -59,14 +59,17 @@ function nowReading(hours) {
   }
 }
 
-// Relative "updated X ago" label.
+// Relative "updated X ago" label. The days tier matters since the offline
+// cache made multi-day-old data a realistic display ("vor 78 Std" reads
+// worse than "vor 3 Tagen").
 function agoLabel(ms) {
   if (!ms) return null
   const min = Math.floor(Math.max(0, Date.now() - ms) / 60000)
   if (min < 1)  return 'gerade aktualisiert'
   if (min < 60) return `aktualisiert vor ${min} min`
   const hrs = Math.floor(min / 60)
-  return `aktualisiert vor ${hrs} Std`
+  if (hrs < 48) return `aktualisiert vor ${hrs} Std`
+  return `aktualisiert vor ${Math.floor(hrs / 24)} Tagen`
 }
 
 // State that survives reloads via localStorage.
@@ -685,6 +688,24 @@ function ForecastChart({ hours, lat, lon, elevation, active, selTs, setSelTs, vi
     return () => clearInterval(id)
   }, [visible, liveMode])
 
+  // Keep the selection visible when it changes from OUTSIDE the chart (the
+  // headline's ‹/› steppers): scrolling only when the selected hour's x is
+  // outside the current viewport, so it never fights a manual scroll, and
+  // taps inside the chart (always visible by definition) are unaffected.
+  useEffect(() => {
+    if (selTs == null || !hours || !scrollRef.current) return
+    const idx = hours.findIndex(h => h.ts === selTs)
+    if (idx === -1) return
+    const pxPerHour = Math.max(6, (w - axisW) / 24)
+    const sx = 4 + idx * pxPerHour
+    const el = scrollRef.current
+    const pad = 30
+    if (sx < el.scrollLeft + pad || sx > el.scrollLeft + el.clientWidth - pad) {
+      el.scrollLeft = Math.max(0, sx - el.clientWidth / 2)
+      scrollPos.current = el.scrollLeft
+    }
+  }, [selTs, hours, w])
+
   const activeKey = Object.keys(active).filter(k => active[k]).sort().join(',')
   const series = useMemo(() => {
     if (!hours || !hours.length) return null
@@ -716,7 +737,10 @@ function ForecastChart({ hours, lat, lon, elevation, active, selTs, setSelTs, vi
     const bands = []
     let start = null
     for (let i = 0; i <= hours.length; i++) {
-      const isNight = i < hours.length && solarElevation(lat, lon, new Date(hours[i].ts)) <= 0
+      // Evaluated at the half-hour MIDPOINT: each band rect spans hour-start
+      // to hour-start, so the midpoint decides day/night for the slot as a
+      // whole — hour-start sampling put the visual edge up to 30 min off.
+      const isNight = i < hours.length && solarElevation(lat, lon, new Date(hours[i].ts + 1800000)) <= 0
       if (isNight && start === null) start = i
       if (!isNight && start !== null) { bands.push([start, i]); start = null }
     }
@@ -1317,9 +1341,12 @@ function MetricToggles({ active, onToggle }) {
 function FeltNow({ point, airTemp, dp, when, live, onStep, onJumpLive }) {
   const schwuel = dp != null && dp >= 18 ? 'stark' : dp != null && dp >= 16 ? 'spürbar' : null
   const seek = !live && onJumpLive
+  // No green blinking "live" indicator while there is no data behind it —
+  // a placeholder claiming to be live would be a lie.
+  const isLive = live && airTemp != null
   const whenEl = (
-    <div className={`felt-when ${live ? 'live' : ''}`}>
-      {live && <i className="fc-now-dot" />}{when}{seek ? ' · tippen für Jetzt' : ''}
+    <div className={`felt-when ${isLive ? 'live' : ''}`}>
+      {isLive && <i className="fc-now-dot" />}{when}{seek ? ' · tippen für Jetzt' : ''}
     </div>
   )
   const valRow = inner => (
@@ -1442,7 +1469,9 @@ function FeltTab({ hours, wxMeta, gridPlace, lat, lon, selTs, setSelTs, visible 
     const idx = Math.max(0, Math.min(hours.length - 1, base + dir))
     setSelTs(hours[idx].ts)
   }
-  const ens = ensembleInfo(hours)
+  // Memoized: walks all ~390 hours × models, but feeds only the (usually
+  // collapsed) methodology section — no reason to redo it on every scrub.
+  const ens = useMemo(() => ensembleInfo(hours), [hours])
 
   return (
     <>
@@ -1511,10 +1540,13 @@ function fmtSlot(start, end) {
 }
 
 // Big-picture headline per verdict class — the tab's primary answer.
+// Time-neutral wording: the verdict can describe "jetzt", a tapped future
+// hour, or manual values — "Jetzt lüften" under a "Fr 08:00" label would
+// contradict itself (the time label above carries the when).
 const VENT_HERO = {
   'Kondens.gefahr':  { title: 'Fenster zu lassen',  icon: '🚫' },
-  'Empfohlen':       { title: 'Jetzt lüften',        icon: '🪟' },
-  'Sinnvoll':        { title: 'Lüften lohnt sich',   icon: '🪟' },
+  'Empfohlen':       { title: 'Lüften empfohlen',    icon: '🪟' },
+  'Sinnvoll':        { title: 'Lüften sinnvoll',     icon: '🪟' },
   'Abwägen':         { title: 'Abwägen',             icon: '🤔' },
   'Kein Effekt':     { title: 'Kaum Effekt',         icon: '😐' },
   'Nicht empfohlen': { title: 'Fenster zu lassen',   icon: '🚫' },
@@ -1535,7 +1567,7 @@ function VentTimeline({ hours, Tin, RHin, win, elevM = 0, selTs, onPick }) {
   if (!fut.length) {
     return (
       <div className="vent-timeline">
-        <div className="vt-title section-name muted">Nächste 24 h</div>
+        <div className="vt-title section-name muted">Nächste 24 h · Stunde antippen</div>
         <div className="vt-strip vt-strip-skeleton" />
         <div className="vt-labels" />
       </div>
@@ -1586,7 +1618,17 @@ function LueftenTab({ inTemp, setInTemp, inRH, setInRH, outTemp, outRH, hours, e
   // an exploration, not a setting. Highest precedence; starts from the
   // currently effective values so nudging one slider keeps the other.
   const [man, setMan] = useState(null)
-  const selHour = selTs != null && hours ? hours.find(h => h.ts === selTs) ?? null : null
+  // A selected hour must still be current-or-future: `hours` keeps ~6 past
+  // hours, so without the expiry check a selection could silently keep
+  // driving the hero after it slid out of the 24h strip (which then shows
+  // no marked cell) — or even after it became a past hour.
+  const stillValid = h => h.ts + 3600000 > Date.now()
+  const selHour = selTs != null && hours ? hours.find(h => h.ts === selTs && stillValid(h)) ?? null : null
+  useEffect(() => {
+    if (selTs != null && (!hours || !hours.some(h => h.ts === selTs && stillValid(h)))) {
+      setSelTs(null)
+    }
+  }, [hours, selTs])
   const oTemp = man ? man.temp : selHour ? selHour.temp : outTemp
   const oRH   = man ? man.rh   : selHour ? selHour.humidity : outRH
   const setManTemp = v => setMan({ temp: v, rh: oRH })
@@ -1653,7 +1695,7 @@ function LueftenTab({ inTemp, setInTemp, inRH, setInRH, outTemp, outRH, hours, e
           ? <VentTimeline hours={hours} Tin={inTemp} RHin={inRH} win={win} elevM={elevation}
               selTs={selTs} onPick={ts => { setMan(null); setSelTs(ts) }} />
           : <>
-              <div className="vt-title section-name muted">Nächste 24 h</div>
+              <div className="vt-title section-name muted">Nächste 24 h · Stunde antippen</div>
               <div className="vt-strip vt-strip-skeleton" />
               <div className="vt-labels" />
             </>}
@@ -1767,9 +1809,11 @@ export default function App() {
   // flaky network) hydrates from it and shows stale-but-labelled data — the
   // freshness chip says "vor X Std" — instead of an empty placeholder until
   // the first fetch succeeds. Dates are revived from their ISO strings.
-  const wxCache = (() => {
+  // Parsed exactly ONCE (lazy state): the blob is a few hundred KB, and a
+  // plain IIFE in the component body used to re-parse it on every render.
+  const [wxCache] = useState(() => {
     try { return JSON.parse(localStorage.getItem('wxCache')) } catch { return null }
-  })()
+  })
   const [hours,       setHours]       = useState(() =>
     wxCache?.hours ? wxCache.hours.map(h => ({ ...h, time: new Date(h.time) })) : null)
   // Graph selection, lifted so both tabs share it. Anchored to the selected
@@ -1787,6 +1831,9 @@ export default function App() {
     if (!hours) return
     try { localStorage.setItem('wxCache', JSON.stringify({ hours, wxMeta, updatedAt })) } catch {}
   }, [hours, wxMeta, updatedAt])
+
+  // One-time cleanup of persisted keys from removed features.
+  useEffect(() => { try { localStorage.removeItem('outManual') } catch {} }, [])
 
   // The `current` endpoint only feeds methodology metadata (member count,
   // spread, grid cell) here — the actual outdoor temp/RH used everywhere
@@ -1839,11 +1886,22 @@ export default function App() {
   // ermittelt…" while data is showing, and if geolocation fails, keep
   // whatever is on screen instead of downgrading to "nicht verfügbar" —
   // a background failure shouldn't nuke a working display.
-  async function loadWeather(silent = false) {
+  // `skipIfNear`: only the mount-time catch-up sets this — its job is
+  // catching a device that MOVED since last use, while a refetch of the
+  // saved coords is already in flight. If the position matches the saved
+  // location (grid cells are coarser than 2 km anyway), a second identical
+  // current+hourly fetch pair would be pure waste. Periodic refreshes must
+  // NOT skip: their whole point is re-fetching the data.
+  async function loadWeather(silent = false, skipIfNear = false) {
     if (!navigator.geolocation) { if (!silent) setGeoStatus('denied'); return }
     if (!silent) setGeoStatus('loading')
     navigator.geolocation.getCurrentPosition(
       async ({ coords }) => {
+        if (skipIfNear && geoLocation?.lat != null &&
+            distKm(coords.latitude, coords.longitude, geoLocation.lat, geoLocation.lon) < 2) {
+          setLocSource('gps')
+          return
+        }
         if (!silent) setGeoStatus('locating')
         try {
           const w = await fetchCurrentWeather(coords.latitude, coords.longitude)
@@ -1921,7 +1979,7 @@ export default function App() {
   useEffect(() => {
     if (geoLocation && geoLocation.lat != null) {
       refetchFor(geoLocation.lat, geoLocation.lon, geoLocation.name)
-      if (locSource !== 'search') loadWeather(true)
+      if (locSource !== 'search') loadWeather(true, true)
     } else {
       loadWeather()
     }
