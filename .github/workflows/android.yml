@@ -159,19 +159,24 @@ jobs:
           sudo udevadm trigger --name-match=kvm
 
       - name: Start emulator
+        timeout-minutes: 12
         run: |
           sdk="$ANDROID_HOME/cmdline-tools/latest/bin"
           yes | "$sdk/sdkmanager" --licenses >/dev/null
           "$sdk/sdkmanager" "emulator" "platform-tools" "$IMAGE" >/dev/null
           echo no | "$sdk/avdmanager" create avd -n smoke -k "$IMAGE" --force
+          "$ANDROID_HOME/emulator/emulator" -accel-check
           nohup "$ANDROID_HOME/emulator/emulator" -avd smoke -no-window -no-audio -no-boot-anim \
-            -gpu swiftshader_indirect -no-snapshot > emulator.log 2>&1 &
+            -no-metrics -gpu swiftshader_indirect -no-snapshot > emulator.log 2>&1 &
           adb="$ANDROID_HOME/platform-tools/adb"
-          "$adb" wait-for-device
-          for _ in $(seq 1 120); do
-            [ "$("$adb" shell getprop sys.boot_completed | tr -d '\r')" = 1 ] && break
+          # Bounded waits: a dead emulator fails here with its log, not at the job timeout.
+          timeout 300 "$adb" wait-for-device || { echo "::error::Emulator never came up"; cat emulator.log; exit 1; }
+          booted=
+          for _ in $(seq 1 150); do
+            [ "$("$adb" shell getprop sys.boot_completed | tr -d '\r')" = 1 ] && { booted=1; break; }
             sleep 2
           done
+          [ -n "$booted" ] || { echo "::error::Emulator did not finish booting"; cat emulator.log; exit 1; }
           "$adb" shell input keyevent 82
 
       - name: Smoke test
@@ -193,7 +198,7 @@ jobs:
           fi
           "$adb" shell pidof "$APP_ID" >/dev/null || { echo "::error::App is not running"; exit 1; }
 
-      - if: failure()
+      - if: failure() || cancelled()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: emulator-logs
