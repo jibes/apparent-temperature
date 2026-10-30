@@ -1,0 +1,650 @@
+/* Gefühlt tab: headline, metric toggles, forecast chart */
+/* ── Top: single headline "Gefühlt" value — a proper surface card, matching
+   the app's boxed design language (top bar, forecast, hero are all cards;
+   this was the one floating unboxed area). The category glow renders inside
+   the card. ── */
+.felt-top {
+  text-align: center;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  padding: 0.5rem 0.6rem;
+  margin-bottom: 0.7rem;
+  /* Fixed, not min: content that varies (fallback vs. full state, Schwüle
+     chip on/off, time label) centers within this space instead of growing/
+     shrinking it and pushing the metric tiles and graph below up and down.
+     Sized (border-box) for label + value + category + 2-line hint plus the
+     card padding. */
+  height: 10rem;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  overflow: hidden;
+  /* Anchor + stacking context for the full-card category glow layer
+     (.felt-now::before) — see there. */
+  position: relative;
+  z-index: 0;
+}
+/* Small time label above the headline value — which instant the number
+   describes: "Jetzt" (green, live-blinking dot, same language as the graph
+   line and button) or the tapped hour's local date/time. */
+.felt-when {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.32rem;
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+  margin-bottom: 0.35rem;
+  font-variant-numeric: tabular-nums;
+}
+.felt-when.live {
+  color: #86efac;
+}
+.felt-when.live .fc-now-dot {
+  background: #86efac;
+  animation: fc-live-blink 1.4s ease-in-out infinite;
+}
+
+/* Soft category-colored radial glow behind the number: "angenehm" vs.
+   "Hitzestress" reads at a glance, not only in the digits. --felt-glow is
+   set only when a felt value exists; otherwise transparent, no glow.
+   Rendered as an absolutely-positioned layer filling the WHOLE card (the
+   ::before spans the padded .felt-top, clipped by its rounded corners) —
+   a gradient on .felt-now itself was a visibly smaller faded rectangle
+   floating inside the card's padding. z-index -1 keeps it under the text;
+   the z-index:0 on .felt-top scopes that below-stacking to the card so the
+   layer still paints above the card's own surface background. */
+.felt-now {
+  width: 100%;
+}
+.felt-now::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background: radial-gradient(
+    70% 95% at 50% 45%,
+    color-mix(in srgb, var(--felt-glow, transparent) 11%, transparent),
+    transparent 100%
+  );
+}
+.felt-now.seekable {
+  cursor: pointer;
+}
+/* ‹ value › row — hour-by-hour scrubbing without precise graph taps. */
+.felt-val-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.7rem;
+}
+.felt-step {
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  width: 1.7rem;
+  height: 1.7rem;
+  border-radius: 50%;
+  font-size: 1.05rem;
+  line-height: 1;
+  cursor: pointer;
+  flex-shrink: 0;
+  padding: 0 0 0.15rem;
+  transition:
+    color 0.15s,
+    border-color 0.15s;
+}
+.felt-step:hover {
+  color: var(--text);
+  border-color: var(--accent);
+}
+/* Promoted humidity-stress indicator — the most actionable summer insight,
+   as a highlighted chip instead of trailing grey prose. */
+.schwuele-chip {
+  display: inline-block;
+  background: #78350f33;
+  border: 1px solid #92400e;
+  color: #fcd34d;
+  font-weight: 700;
+  /* Sized to fit INSIDE a normal hint line box (0.78rem × 1.5): no vertical
+     padding, tighter line-height, slightly smaller font — so the chip
+     appearing can never stretch the line and shift the centered content. */
+  font-size: 0.72rem;
+  line-height: 1.25;
+  padding: 0 0.45rem;
+  border-radius: 999px;
+  white-space: nowrap;
+  vertical-align: baseline;
+}
+.felt-now .ap-val {
+  font-size: 2.9rem;
+  font-weight: 800;
+  letter-spacing: -1.5px;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  color: var(--felt-color, var(--text));
+}
+.felt-now .ap-cat {
+  font-size: 0.95rem;
+  font-weight: 700;
+  margin-top: 0.25rem;
+  margin-bottom: 0.4rem; /* from the removed base .ap-cat rule — load-bearing */
+  color: var(--felt-color, var(--text));
+}
+.felt-hint {
+  font-size: 0.78rem;
+  color: var(--muted);
+  margin: 0.4rem 0 0;
+  line-height: 1.5;
+  /* Always exactly 2 lines of space, clamped: the hint flips between one
+     and two lines as content changes (Schwüle chip on/off, range widths,
+     fallback texts) and the felt-top centers its content — without a fixed
+     height every flip would shift the number vertically. */
+  height: calc(2 * 0.78rem * 1.5);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* ── Forecast chart ── */
+.forecast {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  padding: 0.75rem 0.8rem 0.6rem;
+  margin-bottom: 0.7rem;
+}
+.forecast-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-right: 0.4rem;
+  margin-bottom: 0.5rem;
+  /* Fixed so the load skeleton (text-only head) and the real head (with the
+     taller Spanne/Jetzt buttons) are the same height — no shift on load. */
+  min-height: 1.75rem;
+}
+.forecast-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+.fc-spread-btn {
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 0.2rem 0.6rem;
+  border-radius: 999px;
+  cursor: pointer;
+  transition:
+    border-color 0.15s,
+    color 0.15s,
+    background 0.15s;
+}
+.fc-spread-btn:hover {
+  color: var(--text);
+  border-color: var(--accent);
+}
+.fc-spread-btn.active {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
+}
+.fc-now-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.32rem;
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 0.2rem 0.6rem;
+  border-radius: 999px;
+  cursor: pointer;
+  transition:
+    border-color 0.15s,
+    color 0.15s;
+}
+/* Green + synced while live (selection follows the clock); grey once a
+   specific point elsewhere has been picked and it's no longer tracking. */
+.fc-now-btn.live {
+  color: #86efac;
+  border-color: #166534;
+}
+/* Same keyframes/duration as the graph's Jetzt line (.fc-now.live below) so
+   the two blink in sync rather than drifting out of phase. */
+.fc-now-btn.live .fc-now-dot {
+  background: #86efac;
+  animation: fc-live-blink 1.4s ease-in-out infinite;
+}
+.fc-now-btn:hover {
+  color: #86efac;
+  border-color: #166534;
+}
+.fc-now-btn:hover .fc-now-dot {
+  background: #86efac;
+}
+.fc-now-dot {
+  width: 0.4rem;
+  height: 0.4rem;
+  border-radius: 50%;
+  background: var(--muted);
+  flex-shrink: 0;
+}
+/* One row, no wrapping — rounded-square tiles (matching the app's --rs
+   corner radius, not circles) stretched to fill the width evenly, icon
+   badge + caption both inside the same bordered box. */
+.fc-metrics {
+  display: flex;
+  gap: 0.3rem;
+  margin-bottom: 0.7rem;
+  /* Desktop: tiles cap at a sane width and the row centers, instead of five
+     stretched, mostly-empty slabs across the whole 760px container. */
+  justify-content: center;
+}
+.fc-metric {
+  max-width: 9rem;
+}
+.fc-metric {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.2rem;
+  background: #1e2235;
+  border: 1px solid var(--border);
+  border-radius: var(--rs);
+  padding: 0.4rem 0.2rem 0.35rem;
+  cursor: pointer;
+  transition:
+    background 0.15s,
+    border-color 0.15s;
+}
+.fc-metric.active {
+  background: color-mix(in srgb, var(--metric-color) 14%, #1e2235);
+  border-color: var(--metric-color);
+}
+.fc-metric-circle {
+  width: 1.7rem;
+  height: 1.7rem;
+  border-radius: var(--rs);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.92rem;
+  line-height: 1;
+  border: 1px solid color-mix(in srgb, var(--metric-color) 45%, transparent);
+  background: color-mix(in srgb, var(--metric-color) 12%, transparent);
+  opacity: 0.7;
+  transition:
+    background 0.15s,
+    border-color 0.15s,
+    opacity 0.15s;
+}
+.fc-metric.active .fc-metric-circle {
+  background: color-mix(in srgb, var(--metric-color) 30%, transparent);
+  border-color: var(--metric-color);
+  opacity: 1;
+}
+.fc-metric-label {
+  font-size: 0.6rem;
+  font-weight: 600;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+.fc-metric.active .fc-metric-label {
+  color: var(--text);
+}
+
+.mdot {
+  display: inline-block;
+  width: 0.45rem;
+  height: 0.45rem;
+  border-radius: 50%;
+  margin-right: 0.2rem;
+  vertical-align: middle;
+}
+.mdot + .mdot {
+  margin-left: -0.15rem;
+}
+.fc-plot {
+  display: flex;
+  align-items: stretch;
+  position: relative;
+}
+.fc-axis {
+  flex: 0 0 auto;
+  display: block;
+}
+/* Pinned to the plot's edge(s), on top of (not inside) the scrollable
+   content — labels stay put as the chart scrolls under them instead of
+   scrolling away, without reserving a separate widening column. Two units
+   active get one on each edge (left = whichever's toggle button is more to
+   the left), matching the button that controls it. */
+.fc-ylabs {
+  position: absolute;
+  top: 0;
+  pointer-events: none;
+}
+.fc-ylabs-left {
+  left: 6px;
+}
+.fc-ylabs-right {
+  right: 6px;
+}
+.fc-scroll {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  /* Themed scrollbar — only actually visible on desktop; mobile browsers
+     use their own overlay/auto-hiding scrollbar regardless of these rules. */
+  scrollbar-width: auto;
+  scrollbar-color: var(--muted) var(--surface);
+}
+.fc-scroll::-webkit-scrollbar {
+  height: 8px;
+}
+.fc-scroll::-webkit-scrollbar-track {
+  background: var(--surface);
+}
+.fc-scroll::-webkit-scrollbar-thumb {
+  background: var(--muted);
+  border-radius: 999px;
+}
+.fc-scroll::-webkit-scrollbar-thumb:hover {
+  background: var(--accent);
+}
+.fc-scroll svg {
+  display: block;
+  cursor: grab;
+}
+/* Prevent text selection while drag-panning with the mouse */
+.fc-scroll svg.dragging {
+  cursor: grabbing;
+  user-select: none;
+}
+.fc-grid {
+  stroke: var(--border);
+  stroke-width: 1;
+  opacity: 0.5;
+}
+.fc-daygrid {
+  stroke: var(--muted);
+  stroke-width: 1.2;
+  opacity: 0.55;
+}
+.fc-grid6 {
+  stroke: var(--border);
+  stroke-width: 1;
+  opacity: 0.5;
+}
+.fc-gridminor {
+  stroke: var(--border);
+  stroke-width: 1;
+  opacity: 0.18;
+}
+.fc-empty {
+  fill: var(--muted);
+  font-size: 11px;
+}
+.fc-xlab,
+.fc-hourlab {
+  fill: var(--muted);
+  font-size: 9px;
+  font-variant-numeric: tabular-nums;
+}
+.fc-xlab {
+  font-weight: 700;
+  fill: var(--text);
+}
+.fc-hourlab {
+  font-size: 8px;
+  opacity: 0.8;
+}
+/* Y-axis ticks drawn inside the plot itself — a stroked halo (paint-order:
+   stroke) keeps them legible over whatever line/band happens to sit there,
+   standing in for a background a plain SVG <text> can't have. */
+.fc-ylab-inside {
+  fill: var(--muted);
+  font-size: 9px;
+  font-variant-numeric: tabular-nums;
+  paint-order: stroke;
+  stroke: var(--surface);
+  stroke-width: 3px;
+  stroke-linejoin: round;
+}
+.fc-past {
+  fill: #000;
+  opacity: 0.28;
+}
+.fc-night {
+  fill: #030712;
+  opacity: 0.32;
+}
+.fc-now {
+  stroke: #86efac;
+  stroke-width: 1.4;
+  opacity: 0.85;
+}
+.fc-nowlab {
+  fill: #86efac;
+  font-size: 8.5px;
+  font-weight: 700;
+}
+/* Live-TV-style blink while the selection is actually following the clock;
+   holds steady (no animation) once a specific point elsewhere is picked. */
+@keyframes fc-live-blink {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.3;
+  }
+}
+.fc-now.live,
+.fc-nowlab.live {
+  animation: fc-live-blink 1.4s ease-in-out infinite;
+}
+.fc-cursor {
+  stroke: var(--text);
+  stroke-width: 1;
+  opacity: 0.55;
+}
+
+/* Selected-time legend — kept alongside the in-graph bubbles, but as a
+   compact single-line-per-metric list rather than the old two-line,
+   two-column stat tiles (bubbles already carry the values front and
+   center; this is now just the reference/detail list). */
+.fc-readout {
+  padding: 0.4rem 0.6rem 0.45rem;
+  margin: 0.5rem 0 0.4rem; /* sits below the graph now */
+  background: #1e2235;
+  border: 1px solid var(--border);
+  border-radius: var(--rs);
+  font-size: 0.72rem;
+  /* Compact table, not stretched to the full graph width on wide screens —
+     only shrinks (and lets labels ellipsis) once the viewport is genuinely
+     too narrow for it. */
+  width: max-content;
+  max-width: 100%;
+}
+.fc-rtime {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  margin-bottom: 0.3rem;
+}
+.fc-rlist {
+  /* Two explicit, JS-balanced columns (see the greedy split in App.jsx) —
+     deterministic, unlike CSS multicolumn which balanced unpredictably at
+     narrow widths. Reserve the 4-row maximum (all metrics on = 8 rows split
+     4/4) so toggling metrics never grows/shrinks the box and pushes what's
+     below it: the height is content-independent for a given width. */
+  display: flex;
+  gap: 1.1rem;
+  align-items: flex-start;
+  min-height: 4.5rem;
+}
+.fc-rcol {
+  display: flex;
+  flex-direction: column;
+}
+.fc-rgroup {
+  margin-bottom: 0.15rem;
+}
+.fc-rrow {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  cursor: pointer;
+  border-radius: 5px;
+  padding: 0.05rem 0.2rem;
+  margin: 0 -0.2rem;
+  transition:
+    background 0.15s,
+    opacity 0.15s;
+}
+.fc-rrow:hover {
+  background: color-mix(in srgb, var(--text) 6%, transparent);
+}
+/* The isolated (clicked) row gets the app's standard "selected pill" look —
+   before, only the OTHER rows dimmed and the active one looked unchanged. */
+.fc-rrow[aria-pressed='true'] {
+  background: #2a2f55;
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+.fc-rrow-dim {
+  opacity: 0.35;
+}
+.fc-rgroup-children {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  margin-top: 0.15rem;
+}
+.fc-rrow-label {
+  /* `margin-right: auto` pushes the [range][value] group to the row's right
+     edge while the label keeps its natural (compact) width. `min-width: 0`
+     + ellipsis only ever engage once the readout box itself has been forced
+     narrower than its content (viewport too small) — range/value never
+     shrink (flex-shrink: 0 below), so they stay fully readable. */
+  margin-right: auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.fc-rrow-value {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+}
+.fc-rrow-range {
+  font-size: 0.65rem;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+}
+.forecast-note {
+  font-size: 0.66rem;
+  color: var(--muted);
+  margin-top: 0.4rem;
+}
+
+/* Coarse day-overview strip above the plot: one compact min/max tile per
+   forecast day, horizontally scrollable (hidden scrollbar — the graph
+   below is the primary scroller), tap scrolls the graph to that day.
+   Fixed height so the loading skeleton matches it exactly. */
+.fc-days {
+  display: flex;
+  gap: 0.3rem;
+  overflow-x: auto;
+  scrollbar-width: none;
+  height: 2.9rem;
+  margin-bottom: 0.45rem;
+}
+.fc-days::-webkit-scrollbar {
+  display: none;
+}
+.fc-days-skeleton {
+  background: #1e2235;
+  border-radius: var(--rs);
+}
+.fc-day {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.05rem;
+  background: #1e2235;
+  border: 1px solid var(--border);
+  border-radius: var(--rs);
+  padding: 0.25rem 0.55rem;
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+.fc-day:hover {
+  border-color: var(--accent);
+}
+/* Today stands out — the anchor when scanning the 16-day row. */
+.fc-day.today {
+  border-color: var(--accent);
+  background: #2a2f55;
+}
+.fc-day.today .fc-day-name {
+  color: var(--text);
+}
+.fc-day-name {
+  font-size: 0.62rem;
+  font-weight: 700;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.fc-day-range {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.fc-day-range em {
+  font-style: normal;
+  color: var(--text);
+}
+
+/* Loading placeholders — reserve the exact same fixed pieces (260px plot,
+   the readout's reserved height, the real note markup) so the forecast box
+   is the same height before and after data arrives: no pop-in shift. */
+.fc-plot-skeleton {
+  height: 260px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #1e2235;
+  border-radius: var(--rs);
+}
+.fc-readout-skeleton {
+  height: 106.4px;
+  margin: 0.5rem 0 0.4rem;
+}
+.fc-loading {
+  color: var(--muted);
+  font-size: 0.8rem;
+}

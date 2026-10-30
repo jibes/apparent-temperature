@@ -1,0 +1,515 @@
+:root {
+  --bg: #0d0f18;
+  --surface: #161929;
+  --border: #252840;
+  --text: #e2e8f0;
+  --muted: #7a8498;
+  --accent: #818cf8;
+  --r: 12px;
+  --rs: 7px;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+/* Keyboard-only focus ring (mouse/touch don't trigger :focus-visible) —
+   the app is full of custom buttons/rows that otherwise gave keyboard
+   users no cue where they are. */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+html {
+  /* Reserve the vertical scrollbar's width up front so switching between the
+     Gefühlt and Lüften tabs (very different content heights) never shifts
+     the layout sideways when one needs to scroll and the other doesn't —
+     but the track/thumb itself still only renders when there's actually
+     something to scroll, it's not a permanently-visible empty gutter. */
+  scrollbar-gutter: stable;
+}
+
+body {
+  font-family:
+    system-ui,
+    -apple-system,
+    'Segoe UI',
+    sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  font-size: 15px;
+  /* Same themed scrollbar as the forecast chart's horizontal one, so desktop
+     doesn't show a mismatched default light-gray bar next to it. */
+  scrollbar-width: auto;
+  scrollbar-color: var(--muted) var(--bg);
+}
+body::-webkit-scrollbar {
+  width: 8px;
+}
+body::-webkit-scrollbar-track {
+  background: var(--bg);
+}
+body::-webkit-scrollbar-thumb {
+  background: var(--muted);
+  border-radius: 999px;
+}
+body::-webkit-scrollbar-thumb:hover {
+  background: var(--accent);
+}
+
+.app {
+  max-width: 480px;
+  margin: 0 auto;
+  padding: 1.25rem 0.9rem 4rem;
+}
+/* Wider on desktop — the forecast graph is the main beneficiary: the chart
+   width is measured live (ResizeObserver), so more container width directly
+   means more pixels per hour and a more readable line/band, not just more
+   whitespace around the phone-width layout. */
+@media (min-width: 640px) {
+  .app {
+    max-width: 640px;
+  }
+}
+@media (min-width: 900px) {
+  .app {
+    max-width: 760px;
+  }
+}
+
+/* ── Top bar: tabs (heading) + location, one sleek box instead of the
+   previous alternating boxed/unboxed rows ── */
+.top-bar {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  margin-bottom: 0.7rem;
+  overflow: hidden;
+}
+
+/* ── Geo bar ── */
+.geo-bar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  padding: 0.55rem 0.6rem;
+  border-top: 1px solid var(--border);
+  /* Fixed row height so a longer location name, a status change, or the
+     search field swapping in never changes the bar's height. */
+  height: 3rem;
+}
+/* flex:1 status region — the chip centers within it, the icons after it sit
+   pinned at the bar's right edge regardless of the chip text's width. */
+.geo-status {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  justify-content: center;
+}
+/* The status chip IS the button that opens the search — one obvious tap
+   target instead of a separate bare icon. Inherits its tone (geo-ok /
+   geo-msg) and adds interactivity affordances: pointer, hover accent, and
+   a small trailing magnifier hinting at tap-to-search. */
+.geo-chip {
+  font: inherit;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  max-width: 100%;
+  transition: border-color 0.15s;
+}
+.geo-chip:hover {
+  border-color: var(--accent);
+}
+.geo-chip-text {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+.geo-chip-find {
+  font-size: 0.62rem;
+  opacity: 0.55;
+  flex-shrink: 0;
+}
+.geo-ok {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #86efac;
+  background: #14532d33;
+  border: 1px solid #166534;
+  padding: 0.22rem 0.7rem;
+  border-radius: 999px;
+  /* One line only — a long place name shouldn't wrap and grow the bar. */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+.geo-msg {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--muted);
+  padding: 0.22rem 0.7rem;
+  border-radius: 999px;
+  background: #1e2235;
+  border: 1px solid var(--border);
+}
+.geo-msg.warn {
+  color: #fcd34d;
+  border-color: #92400e;
+  background: #78350f22;
+}
+/* Freshness, folded into the geo chip rather than its own row */
+.geo-ok em,
+.geo-msg em {
+  font-style: normal;
+  font-weight: 500;
+  opacity: 0.7;
+}
+.geo-icon {
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  border-radius: 999px;
+  width: 1.6rem;
+  height: 1.6rem;
+  cursor: pointer;
+  font-size: 0.8rem;
+  line-height: 1;
+  flex-shrink: 0;
+  padding: 0;
+}
+.geo-icon:hover {
+  color: var(--text);
+  border-color: var(--accent);
+}
+
+.geo-search {
+  flex: 1;
+  min-width: 0;
+  max-width: 220px;
+  background: #1e2235;
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 999px;
+  padding: 0.25rem 0.7rem;
+  font-size: 0.8rem;
+  outline: none;
+}
+.geo-search:focus {
+  border-color: var(--accent);
+}
+.geo-search::placeholder {
+  color: var(--muted);
+}
+
+/* ── Tabs: the top row of .top-bar, not its own box ── */
+.tabs {
+  display: flex;
+  gap: 0.3rem;
+  padding: 0.3rem;
+}
+.tab {
+  flex: 1;
+  background: none;
+  border: 1px solid transparent;
+  color: var(--muted);
+  font-size: 0.88rem;
+  font-weight: 700;
+  padding: calc(0.42rem - 1px) calc(0.5rem - 1px);
+  border-radius: var(--rs);
+  cursor: pointer;
+  transition:
+    background 0.15s,
+    color 0.15s,
+    border-color 0.15s;
+}
+/* Same "selected" language as everywhere else (metric toggle chips): a
+   tinted, bordered pill — not a solid fill — so tabs don't read as a
+   one-off, louder exception to the rest of the app's active-state style. */
+.tab.active {
+  background: #2a2f55;
+  border-color: var(--accent);
+  color: var(--text);
+}
+
+/* ── Collapsible section cards ── */
+.section-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  margin-bottom: 0.7rem; /* one shared vertical rhythm for all cards */
+  overflow: hidden;
+}
+.section-summary {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.75rem 1rem;
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  /* One fixed row: the name stays put and the chips get the remaining width
+     and stay on one line (their own text never wraps), so a longer value or
+     the "· manuell" suffix can't push the header to two lines. */
+  min-height: 3rem;
+  flex-wrap: nowrap;
+  overflow: hidden;
+}
+.section-summary::-webkit-details-marker {
+  display: none;
+}
+.section-summary::marker {
+  display: none;
+}
+
+/* chevron via CSS */
+.section-card > .section-summary::before {
+  content: '▸';
+  font-size: 0.7rem;
+  color: var(--muted);
+  flex-shrink: 0;
+  transition: transform 0.15s;
+}
+.section-card[open] > .section-summary::before {
+  transform: rotate(90deg);
+}
+
+.section-name {
+  font-size: 0.82rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-shrink: 0;
+}
+
+.summary-chips {
+  display: flex;
+  gap: 0.35rem;
+  flex-wrap: nowrap;
+  margin-left: auto; /* push chips to the right edge, on one line */
+  overflow: hidden;
+}
+.summary-chips .chip {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.chip {
+  background: #1e2235;
+  border: 1px solid var(--border);
+  color: var(--accent);
+  font-size: 0.78rem;
+  font-weight: 600;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  font-variant-numeric: tabular-nums;
+}
+
+.chip.felt {
+  color: var(--text);
+  border-color: var(--border);
+  background: #20243c;
+}
+
+/* ── Controls (sliders) ── */
+.control {
+  margin-top: 1rem;
+}
+.control:first-child {
+  margin-top: 0.6rem;
+}
+
+.control-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+
+.slider-label {
+  font-size: 0.85rem;
+  color: var(--muted);
+  display: inline-flex;
+  align-items: center;
+}
+
+.value-badge {
+  background: #1e2235;
+  color: var(--accent);
+  font-size: 0.8rem;
+  font-weight: 700;
+  padding: 0.15rem 0.6rem;
+  border-radius: 999px;
+  font-variant-numeric: tabular-nums;
+}
+
+input[type='range'] {
+  width: 100%;
+  accent-color: var(--accent);
+  cursor: pointer;
+  height: 4px;
+  padding: 9px 0;
+  display: block;
+}
+
+/* ── Info toggle ── */
+.info-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+.info-btn {
+  background: none;
+  border: 1px solid #2a3050;
+  color: var(--muted);
+  border-radius: 999px;
+  width: 1.15rem;
+  height: 1.15rem;
+  font-size: 0.6rem;
+  font-weight: 700;
+  cursor: pointer;
+  margin-left: 0.3rem;
+  line-height: 1;
+  flex-shrink: 0;
+  padding: 0;
+  font-style: italic;
+}
+.info-btn:hover {
+  color: var(--text);
+  border-color: var(--accent);
+}
+
+.info-tip {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: #1e2235;
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-size: 0.75rem;
+  line-height: 1.4;
+  padding: 0.5rem 0.7rem;
+  border-radius: var(--rs);
+  /* Never wider than the viewport allows — combined with the measured
+     clamp-shift in the Info component, the tip is always fully visible. */
+  width: min(200px, calc(100vw - 2rem));
+  z-index: 10;
+  pointer-events: none;
+}
+
+.vent-note {
+  font-size: 0.76rem;
+  line-height: 1.55;
+  color: var(--muted);
+  padding: 0 0.3rem;
+}
+.vent-note em {
+  color: var(--text);
+  font-style: italic;
+}
+
+/* ── Formula section ── */
+.formula-card {
+  opacity: 0.7;
+}
+.formula-card:hover {
+  opacity: 1;
+}
+
+.formula-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.formula-body p {
+  font-size: 0.78rem;
+  color: var(--muted);
+  line-height: 1.55;
+}
+
+.formula-body strong {
+  color: var(--text);
+}
+
+.model-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.76rem;
+  color: var(--muted);
+  padding-left: 0.2rem;
+}
+.model-list li::before {
+  content: '·';
+  margin-right: 0.4rem;
+  color: var(--accent);
+}
+
+code {
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  background: #0d0f18;
+  padding: 0.1em 0.35em;
+  border-radius: 4px;
+  font-size: 0.82em;
+}
+
+.muted {
+  color: var(--muted);
+}
+
+/* ── Update banner (service worker waiting) ── */
+.update-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+  padding: 8px 12px;
+  border-radius: var(--rs, 12px);
+  background: var(--surface);
+  font-size: 0.85rem;
+}
+.update-banner span {
+  flex: 1;
+}
+.update-btn,
+.update-dismiss {
+  border: 0;
+  border-radius: 999px;
+  padding: 4px 12px;
+  font: inherit;
+  cursor: pointer;
+}
+.update-btn {
+  background: #22c55e;
+  color: #052e16;
+  font-weight: 700;
+}
+.update-dismiss {
+  background: transparent;
+  color: inherit;
+  opacity: 0.7;
+}
+
+/* ── Build id (STANDARD §8) ── */
+.build-info {
+  margin: 18px 0 4px;
+  text-align: center;
+  font-size: 0.7rem;
+  opacity: 0.4;
+}

@@ -1,0 +1,318 @@
+/* Lüften tab */
+/* ── Lüften: answer-first layout ── */
+.vent-hero {
+  padding: 0.85rem 1rem;
+  border-radius: var(--r);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  margin-bottom: 0.7rem;
+}
+.vent-hero.good {
+  border-color: #166534;
+  background: #14532d22;
+}
+.vent-hero.bad {
+  border-color: #991b1b;
+  background: #7f1d1d22;
+}
+.vent-hero.warn {
+  border-color: #92400e;
+  background: #78350f22;
+}
+.vent-hero.neutral {
+  border-color: var(--border);
+}
+/* Which instant the verdict describes — same time-label language as the
+   Gefühlt headline ("Jetzt" green + blinking dot, or the tapped hour). */
+.vh-when {
+  display: flex;
+  align-items: center;
+  gap: 0.32rem;
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+  margin-bottom: 0.3rem;
+  font-variant-numeric: tabular-nums;
+}
+.vh-when.live {
+  color: #86efac;
+}
+.vh-when.live .fc-now-dot {
+  background: #86efac;
+  animation: fc-live-blink 1.4s ease-in-out infinite;
+}
+/* Manual what-if values are driving the verdict — amber, like other
+   "attention, not live data" signals in the app. */
+.vh-when.manual {
+  color: #fcd34d;
+}
+.vent-hero.seekable {
+  cursor: pointer;
+}
+.vh-verdict {
+  font-size: 1.25rem;
+  font-weight: 800;
+}
+.vent-hero.good .vh-verdict {
+  color: #86efac;
+}
+.vent-hero.bad .vh-verdict {
+  color: #fca5a5;
+}
+.vent-hero.warn .vh-verdict {
+  color: #fcd34d;
+}
+.vh-reason {
+  font-size: 0.78rem;
+  color: var(--muted);
+  margin: 0.3rem 0 0;
+  line-height: 1.45;
+  /* Reserve exactly 3 lines and clamp to them, so a shorter or longer
+     reason (they vary with the verdict) never resizes the hero. */
+  height: calc(3 * 0.78rem * 1.45);
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.vh-chips {
+  display: flex;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+  align-content: flex-start;
+  margin-top: 0.55rem;
+  /* Reserve 2 rows (the realistic max: moisture + heat, which wrap at
+     phone width) so the chip count changing never resizes the hero. */
+  height: 3.3rem;
+  overflow: hidden;
+}
+/* Wider screens wrap far less — the phone-sized reservations left a big
+   empty block at the hero's bottom. Still fixed heights (per width), just
+   sized for the actual worst case at that width: reasons fit 2 lines, the
+   two chips one row, the window text 2 lines. */
+@media (min-width: 640px) {
+  .vh-reason {
+    height: calc(2 * 0.78rem * 1.45);
+    -webkit-line-clamp: 2;
+  }
+  .vh-chips {
+    height: 1.75rem;
+  }
+  .vent-window {
+    height: calc(2 * 0.8rem * 1.5 + 1.2rem + 2px);
+    -webkit-line-clamp: 2;
+  }
+}
+
+.vent-when {
+  padding: 0.75rem 1rem 0.6rem;
+}
+.vent-when .vent-window {
+  margin: 0.55rem 0 0.2rem;
+}
+.vt-title {
+  margin-bottom: 0.45rem;
+}
+.vt-strip {
+  display: flex;
+  gap: 2px;
+  height: 26px;
+  border-radius: 6px;
+  overflow: hidden;
+}
+/* Cells are buttons (tap = move the hero verdict to that hour). */
+.vt-cell {
+  flex: 1;
+  opacity: 0.85;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  min-width: 0;
+}
+.vt-cell.good {
+  background: #22c55e;
+}
+.vt-cell.warn {
+  background: #eab308;
+}
+.vt-cell.neutral {
+  background: #3a4160;
+}
+.vt-cell.bad {
+  background: #b91c1c;
+}
+/* the bestVentWindow run pops out of the strip */
+.vt-cell.best {
+  opacity: 1;
+  box-shadow: inset 0 -3px 0 #fff9;
+}
+/* the tapped hour driving the hero verdict */
+.vt-cell.sel {
+  opacity: 1;
+  box-shadow: inset 0 0 0 2px #fff;
+}
+/* Inset ring instead of the global outer outline: the strip's
+   overflow:hidden (rounded corners) would clip an outline away. */
+.vt-cell:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 2px var(--accent);
+}
+/* Fixed height so the empty skeleton label row matches the real one. */
+.vt-labels {
+  display: flex;
+  margin-top: 0.15rem;
+  height: 0.75rem;
+}
+.vt-lab {
+  flex: 1;
+  font-size: 0.6rem;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.vent-inputs {
+  padding: 0.75rem 1rem 1rem;
+}
+.vent-inputs-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+}
+.vent-inputs-body .control:first-child {
+  margin-top: 0.7rem;
+}
+
+.vent-window {
+  font-size: 0.8rem;
+  line-height: 1.5;
+  padding: 0.6rem 0.8rem;
+  border-radius: var(--rs);
+  margin-bottom: 0.6rem;
+  /* Fixed at exactly 3 text lines (+ padding + border) and clamped to 3, so
+     switching between the longer "best window" message and the shorter
+     neutral/loading ones never resizes it. Must be a fixed height, not
+     min-height: a 3-line message is taller than the border-box a min-height
+     reserves, which was the residual few-px jump. */
+  height: calc(3 * 0.8rem * 1.5 + 1.2rem + 2px);
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.vent-window.good {
+  background: #14532d33;
+  color: #86efac;
+  border: 1px solid #166534;
+}
+.vent-window.neutral {
+  background: #1e2235;
+  color: var(--muted);
+  border: 1px solid var(--border);
+}
+.vent-window strong {
+  color: inherit;
+}
+
+.verdict-chip {
+  font-size: 0.8rem;
+  font-weight: 700;
+  padding: 0.18rem 0.65rem;
+  border-radius: 999px;
+}
+.verdict-chip.good {
+  background: #14532d33;
+  color: #86efac;
+  border: 1px solid #166534;
+}
+.verdict-chip.bad {
+  background: #7f1d1d33;
+  color: #fca5a5;
+  border: 1px solid #991b1b;
+}
+.verdict-chip.warn {
+  background: #78350f33;
+  color: #fcd34d;
+  border: 1px solid #92400e;
+}
+.verdict-chip.neutral {
+  background: #1e2235;
+  color: var(--muted);
+  border: 1px solid var(--border);
+}
+
+.section-body {
+  padding: 0.1rem 1rem 1rem;
+  border-top: 1px solid var(--border);
+}
+
+/* Timeline strip placeholder while the forecast loads on the Lüften tab. */
+.vt-strip-skeleton {
+  background: #1e2235;
+}
+
+/* ── Ventilation table ── */
+.vent-table {
+  padding-top: 0.5rem;
+}
+
+.d-head,
+.d-row {
+  display: grid;
+  grid-template-columns: minmax(80px, 1.3fr) 60px 14px 60px 1fr;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.82rem;
+  padding: 0.25rem 0;
+}
+
+.d-head {
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--muted);
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 0.4rem;
+  margin-bottom: 0.1rem;
+}
+
+.d-label {
+  color: var(--muted);
+  font-size: 0.8rem;
+  display: flex;
+  align-items: center;
+}
+.d-in,
+.d-out {
+  font-variant-numeric: tabular-nums;
+  font-size: 0.82rem;
+}
+.d-arrow {
+  text-align: center;
+  color: var(--border);
+  font-size: 0.75rem;
+}
+.d-delta {
+  font-variant-numeric: tabular-nums;
+  font-size: 0.75rem;
+  font-weight: 700;
+  padding: 0.12rem 0.45rem;
+  border-radius: 999px;
+  text-align: right;
+  white-space: nowrap;
+}
+.d-delta.good {
+  background: #14532d44;
+  color: #86efac;
+}
+.d-delta.bad {
+  background: #7f1d1d44;
+  color: #fca5a5;
+}
+.d-delta.neutral {
+  background: #1e2235;
+  color: var(--muted);
+}

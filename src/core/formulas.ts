@@ -2,18 +2,18 @@
 // max relative error <0.4% over −40…+50°C. The matched constant for this
 // (MA, MB) pair is C0 = 6.1094 hPa; the older Tetens value 6.1078 belongs
 // to the (17.27, 237.3) pair and is inconsistent here.
-const MA = 17.625
-const MB = 243.04 // °C
-const C0 = 6.1094 // hPa, saturation pressure at 0°C
+const MA = 17.625;
+const MB = 243.04; // °C
+const C0 = 6.1094; // hPa, saturation pressure at 0°C
 
 // Saturation vapor pressure [hPa]
-export function saturationPressure(T) {
-  return C0 * Math.exp((MA * T) / (MB + T))
+export function saturationPressure(T: number): number {
+  return C0 * Math.exp((MA * T) / (MB + T));
 }
 
 // Actual vapor pressure [hPa]
-export function vaporPressure(T, RH) {
-  return (RH / 100) * saturationPressure(T)
+export function vaporPressure(T: number, RH: number): number {
+  return (RH / 100) * saturationPressure(T);
 }
 
 // Dew point [°C] — inverse Magnus. Independent of C0 (it cancels), so the
@@ -21,55 +21,55 @@ export function vaporPressure(T, RH) {
 // at RH = 0 the log diverges (-Inf/Inf = NaN, which then poisons comparisons
 // like condensation risk); the floor keeps the limit behavior (a very low,
 // finite dew point) instead.
-export function dewPoint(T, RH) {
-  const lnE = Math.log(vaporPressure(T, Math.max(RH, 0.1)) / C0)
-  return (MB * lnE) / (MA - lnE)
+export function dewPoint(T: number, RH: number): number {
+  const lnE = Math.log(vaporPressure(T, Math.max(RH, 0.1)) / C0);
+  return (MB * lnE) / (MA - lnE);
 }
 
 // Absolute humidity [g/m³]
 // Derived from ideal gas law for water vapor: ρ_w = e·M_w/(R·T_K)
 // M_w = 18.015 g/mol, R = 8.314 J/(mol·K) → factor 216.7
-export function absoluteHumidity(T, RH) {
-  return (216.7 * vaporPressure(T, RH)) / (T + 273.15)
+export function absoluteHumidity(T: number, RH: number): number {
+  return (216.7 * vaporPressure(T, RH)) / (T + 273.15);
 }
 
 // Barometric pressure [hPa] at elevation [m] — isothermal barometric formula
 // with the standard 8434 m scale height. Elevation is a property of the
 // place (like lat/lon), so callers pass it through unconditionally; 0 m
 // (sea-level standard atmosphere) is the neutral default.
-const P0 = 1013.25 // hPa, standard sea-level pressure
-export function pressureAtElevation(m = 0) {
-  return P0 * Math.exp(-Math.max(0, m) / 8434)
+const P0 = 1013.25; // hPa, standard sea-level pressure
+export function pressureAtElevation(m = 0): number {
+  return P0 * Math.exp(-Math.max(0, m) / 8434);
 }
 
 // Humidity mixing ratio W [kg_water / kg_dry_air]
 // W = 0.622 · e / (p − e) at site pressure p (thinner air at altitude holds
 // more water per kg of dry air for the same vapor pressure).
-function mixingRatio(T, RH, p = P0) {
-  const e = vaporPressure(T, RH)
-  return (0.622 * e) / (p - e)
+function mixingRatio(T: number, RH: number, p = P0): number {
+  const e = vaporPressure(T, RH);
+  return (0.622 * e) / (p - e);
 }
 
 // Specific enthalpy of moist air [kJ / kg_dry_air] at site pressure
 // h = cp_a·T + W·(L₀ + cp_v·T)
 // cp_a = 1.006 kJ/(kg·K), L₀ = 2501 kJ/kg (latent heat at 0°C), cp_v = 1.86 kJ/(kg·K)
-export function specificEnthalpy(T, RH, p = P0) {
-  const W = mixingRatio(T, RH, p)
-  return 1.006 * T + W * (2501 + 1.86 * T)
+export function specificEnthalpy(T: number, RH: number, p = P0): number {
+  const W = mixingRatio(T, RH, p);
+  return 1.006 * T + W * (2501 + 1.86 * T);
 }
 
 // Heat index (NWS / Rothfusz 1990) [°C → °C]
 // Two-step: simple Steadman formula first; only apply Rothfusz polynomial if result
 // warrants it (NWS threshold: average of simple HI and T ≥ 80°F).
-export function heatIndex(T_C, RH) {
-  const T = (T_C * 9) / 5 + 32 // °F
+export function heatIndex(T_C: number, RH: number): number {
+  const T = (T_C * 9) / 5 + 32; // °F
 
   // Step 1 — simplified Steadman
-  const HI_simple = 0.5 * (T + 61.0 + (T - 68.0) * 1.2 + RH * 0.094)
+  const HI_simple = 0.5 * (T + 61.0 + (T - 68.0) * 1.2 + RH * 0.094);
 
   // Step 2 — threshold check
   if ((HI_simple + T) / 2 < 80) {
-    return T_C // heat stress negligible
+    return T_C; // heat stress negligible
   }
 
   // Step 3 — Rothfusz regression (9-term polynomial)
@@ -82,18 +82,18 @@ export function heatIndex(T_C, RH) {
     5.481717e-2 * RH * RH +
     1.22874e-3 * T * T * RH +
     8.5282e-4 * T * RH * RH -
-    1.99e-6 * T * T * RH * RH
+    1.99e-6 * T * T * RH * RH;
 
   // Adjustment: low RH at high T (Rothfusz eq. 3)
   if (RH < 13 && T >= 80 && T <= 112) {
-    HI -= ((13 - RH) / 4) * Math.sqrt((17 - Math.abs(T - 95)) / 17)
+    HI -= ((13 - RH) / 4) * Math.sqrt((17 - Math.abs(T - 95)) / 17);
   }
   // Adjustment: high RH at moderately high T (Rothfusz eq. 3)
   if (RH > 85 && T >= 80 && T <= 87) {
-    HI += ((RH - 85) / 10) * ((87 - T) / 5)
+    HI += ((RH - 85) / 10) * ((87 - T) / 5);
   }
 
-  return ((HI - 32) * 5) / 9 // → °C
+  return ((HI - 32) * 5) / 9; // → °C
 }
 
 // UTCI polynomial approximation (Bröde et al. 2012, Int J Biometeorol 56:481-494)
@@ -115,35 +115,44 @@ export function heatIndex(T_C, RH) {
 // ΔTmrt ≈ 25 °C — consistent with globe-thermometer observations.
 // (A rigorous treatment would use SolarCal / ASHRAE 55 with solar
 // geometry, albedo and clothing absorptivity.)
-export function meanRadiantTemp(Ta, solar) {
-  return Ta + 0.025 * Math.max(0, solar)
+export function meanRadiantTemp(Ta: number, solar: number): number {
+  return Ta + 0.025 * Math.max(0, solar);
 }
 
 // Solar elevation angle [°] for a place and instant (NOAA algorithm).
 // lon is east-positive degrees; date is interpreted in UTC.
-export function solarElevation(lat, lon, date = new Date()) {
-  const rad = Math.PI / 180
-  const startUTC = Date.UTC(date.getUTCFullYear(), 0, 0)
-  const N = (Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()) - startUTC) / 86400000
-  const hUTC = date.getUTCHours() + date.getUTCMinutes() / 60 + date.getUTCSeconds() / 3600
+export function solarElevation(lat: number, lon: number, date = new Date()): number {
+  const rad = Math.PI / 180;
+  const startUTC = Date.UTC(date.getUTCFullYear(), 0, 0);
+  const N =
+    (Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()) - startUTC) / 86400000;
+  const hUTC = date.getUTCHours() + date.getUTCMinutes() / 60 + date.getUTCSeconds() / 3600;
 
-  const gamma = ((2 * Math.PI) / 365) * (N - 1 + (hUTC - 12) / 24) // fractional year [rad]
+  const gamma = ((2 * Math.PI) / 365) * (N - 1 + (hUTC - 12) / 24); // fractional year [rad]
 
-  const eqtime = 229.18 * (0.000075
-    + 0.001868 * Math.cos(gamma)    - 0.032077 * Math.sin(gamma)
-    - 0.014615 * Math.cos(2 * gamma) - 0.040849 * Math.sin(2 * gamma)) // minutes
+  const eqtime =
+    229.18 *
+    (0.000075 +
+      0.001868 * Math.cos(gamma) -
+      0.032077 * Math.sin(gamma) -
+      0.014615 * Math.cos(2 * gamma) -
+      0.040849 * Math.sin(2 * gamma)); // minutes
 
-  const decl = 0.006918
-    - 0.399912 * Math.cos(gamma)    + 0.070257 * Math.sin(gamma)
-    - 0.006758 * Math.cos(2 * gamma) + 0.000907 * Math.sin(2 * gamma)
-    - 0.002697 * Math.cos(3 * gamma) + 0.00148  * Math.sin(3 * gamma) // radians
+  const decl =
+    0.006918 -
+    0.399912 * Math.cos(gamma) +
+    0.070257 * Math.sin(gamma) -
+    0.006758 * Math.cos(2 * gamma) +
+    0.000907 * Math.sin(2 * gamma) -
+    0.002697 * Math.cos(3 * gamma) +
+    0.00148 * Math.sin(3 * gamma); // radians
 
-  const tst = hUTC * 60 + eqtime + 4 * lon  // true solar time [min]
-  const ha  = (tst / 4 - 180) * rad         // hour angle [rad]
+  const tst = hUTC * 60 + eqtime + 4 * lon; // true solar time [min]
+  const ha = (tst / 4 - 180) * rad; // hour angle [rad]
 
-  const cosZ = Math.sin(lat * rad) * Math.sin(decl)
-             + Math.cos(lat * rad) * Math.cos(decl) * Math.cos(ha)
-  return 90 - Math.acos(Math.min(1, Math.max(-1, cosZ))) / rad
+  const cosZ =
+    Math.sin(lat * rad) * Math.sin(decl) + Math.cos(lat * rad) * Math.cos(decl) * Math.cos(ha);
+  return 90 - Math.acos(Math.min(1, Math.max(-1, cosZ))) / rad;
 }
 
 // Clear-sky global horizontal irradiance [W/m²] from solar elevation
@@ -156,28 +165,45 @@ export function solarElevation(lat, lon, date = new Date()) {
 // approach) yields only ~1%/km, far below the observed gradient, so the
 // explicit gradient is used instead. Capped at 4 km, where the linear fit
 // stops being trustworthy. Returns 0 below the horizon.
-export function clearSkyGHI(elevDeg, elevationM = 0) {
-  if (elevDeg <= 0) return 0
-  const cosZ = Math.cos(((90 - elevDeg) * Math.PI) / 180)
-  if (cosZ <= 0) return 0
-  const altFactor = 1 + 0.08 * Math.min(4, Math.max(0, elevationM) / 1000)
-  return Math.max(0, altFactor * 1098 * cosZ * Math.exp(-0.057 / cosZ))
+export function clearSkyGHI(elevDeg: number, elevationM = 0): number {
+  if (elevDeg <= 0) return 0;
+  const cosZ = Math.cos(((90 - elevDeg) * Math.PI) / 180);
+  if (cosZ <= 0) return 0;
+  const altFactor = 1 + 0.08 * Math.min(4, Math.max(0, elevationM) / 1000);
+  return Math.max(0, altFactor * 1098 * cosZ * Math.exp(-0.057 / cosZ));
 }
 
-export function utci(Ta, RH, va_kmh, Tr = null) {
-  const vel = Math.max(0.5, Math.min(17, va_kmh / 3.6)) // km/h → m/s, clamp
-  const d_tr = (Tr ?? Ta) - Ta                          // radiant offset [°C]
-  const Pa   = vaporPressure(Ta, RH) / 10              // hPa → kPa
+export function utci(Ta: number, RH: number, va_kmh: number, Tr: number | null = null): number {
+  const vel = Math.max(0.5, Math.min(17, va_kmh / 3.6)); // km/h → m/s, clamp
+  const d_tr = (Tr ?? Ta) - Ta; // radiant offset [°C]
+  const Pa = vaporPressure(Ta, RH) / 10; // hPa → kPa
 
-  const ta = Ta
-  const ta2 = ta*ta, ta3=ta2*ta, ta4=ta3*ta, ta5=ta4*ta, ta6=ta5*ta
-  const v = vel
-  const v2 = v*v, v3=v2*v, v4=v3*v, v5=v4*v, v6=v5*v
-  const d = d_tr
-  const d2 = d*d, d3=d2*d, d4=d3*d, d5=d4*d, d6=d5*d
-  const p = Pa
-  const p2 = p*p, p3=p2*p, p4=p3*p, p5=p4*p, p6=p5*p
+  const ta = Ta;
+  const ta2 = ta * ta,
+    ta3 = ta2 * ta,
+    ta4 = ta3 * ta,
+    ta5 = ta4 * ta,
+    ta6 = ta5 * ta;
+  const v = vel;
+  const v2 = v * v,
+    v3 = v2 * v,
+    v4 = v3 * v,
+    v5 = v4 * v,
+    v6 = v5 * v;
+  const d = d_tr;
+  const d2 = d * d,
+    d3 = d2 * d,
+    d4 = d3 * d,
+    d5 = d4 * d,
+    d6 = d5 * d;
+  const p = Pa;
+  const p2 = p * p,
+    p3 = p2 * p,
+    p4 = p3 * p,
+    p5 = p4 * p,
+    p6 = p5 * p;
 
+  // prettier-ignore
   return ta + (
     0.607562052 +
     -0.0227712343 * ta +
@@ -410,27 +436,42 @@ export function utci(Ta, RH, va_kmh, Tr = null) {
   )
 }
 
-// UTCI stress category (ISO 15743 / Bröde 2012)
-export function utciCategory(utciVal) {
-  if (utciVal > 46)  return { label: 'Extremer Hitzestress',         cls: 'very-hot' }
-  if (utciVal > 38)  return { label: 'Sehr starker Hitzestress',     cls: 'hot' }
-  if (utciVal > 32)  return { label: 'Starker Hitzestress',          cls: 'hot' }
-  if (utciVal > 26)  return { label: 'Mäßiger Hitzestress',          cls: 'warm' }
-  if (utciVal > 9)   return { label: 'Keine thermische Belastung',   cls: 'comfortable' }
-  if (utciVal > 0)   return { label: 'Leichter Kältestress',         cls: 'cool' }
-  if (utciVal > -13) return { label: 'Mäßiger Kältestress',          cls: 'cold' }
-  if (utciVal > -27) return { label: 'Starker Kältestress',          cls: 'cold' }
-  if (utciVal > -40) return { label: 'Sehr starker Kältestress',     cls: 'very-cold' }
-  return               { label: 'Extremer Kältestress',              cls: 'very-cold' }
+// UTCI stress category (ISO 15743 / Bröde 2012). Returns a stable key (the UI
+// maps it to a translated label) plus the colour class.
+export type UtciCategoryKey =
+  | 'extremeHeat'
+  | 'veryStrongHeat'
+  | 'strongHeat'
+  | 'moderateHeat'
+  | 'noStress'
+  | 'slightCold'
+  | 'moderateCold'
+  | 'strongCold'
+  | 'veryStrongCold'
+  | 'extremeCold';
+export function utciCategory(utciVal: number): { key: UtciCategoryKey; cls: string } {
+  if (utciVal > 46) return { key: 'extremeHeat', cls: 'very-hot' };
+  if (utciVal > 38) return { key: 'veryStrongHeat', cls: 'hot' };
+  if (utciVal > 32) return { key: 'strongHeat', cls: 'hot' };
+  if (utciVal > 26) return { key: 'moderateHeat', cls: 'warm' };
+  if (utciVal > 9) return { key: 'noStress', cls: 'comfortable' };
+  if (utciVal > 0) return { key: 'slightCold', cls: 'cool' };
+  if (utciVal > -13) return { key: 'moderateCold', cls: 'cold' };
+  if (utciVal > -27) return { key: 'strongCold', cls: 'cold' };
+  if (utciVal > -40) return { key: 'veryStrongCold', cls: 'very-cold' };
+  return { key: 'extremeCold', cls: 'very-cold' };
 }
 
 // Apparent temperature for indoor conditions (no wind)
-export function indoorApparentTemp(T, RH) {
+export function indoorApparentTemp(
+  T: number,
+  RH: number,
+): { value: number; formula: 'heatIndex' | 'none' } {
   if (T >= 27) {
-    const hi = heatIndex(T, RH)
-    return { value: hi, formula: hi > T + 0.5 ? 'hitzeindex' : 'keine' }
+    const hi = heatIndex(T, RH);
+    return { value: hi, formula: hi > T + 0.5 ? 'heatIndex' : 'none' };
   }
-  return { value: T, formula: 'keine' }
+  return { value: T, formula: 'none' };
 }
 
 // Ventilation assessment — compares indoor vs. outdoor air thermodynamically.
@@ -461,63 +502,120 @@ export function indoorApparentTemp(T, RH) {
 //   duration (dT/wind are returned so the UI can say "5–10 min genügen").
 // - HARD EXCLUSIONS, same physics as the hourly verdict: condensation risk,
 //   and hours that would make the room both wetter and warmer.
-export const COMFORT = { tLo: 20, tHi: 24, rhLo: 40, rhHi: 60 }
+export const COMFORT = { tLo: 20, tHi: 24, rhLo: 40, rhHi: 60 };
 
-export function ventScore(Tin, RHin, Tout, RHout, wind = 0, elevM = 0) {
-  const a = ventilationAssessment(Tin, RHin, Tout, RHout, elevM)
-  if (a.condensationRisk) return -Infinity
-  if (a.deltaAH > 0.3 && a.deltaH > 0.5) return -Infinity // wetter AND warmer
-  const moisture = -a.deltaAH                 // >0 → dries the room [g/m³]
-  const dT = Tin - Tout                       // >0 → outside cooler
+export function ventScore(
+  Tin: number,
+  RHin: number,
+  Tout: number,
+  RHout: number,
+  wind = 0,
+  elevM = 0,
+): number {
+  const a = ventilationAssessment(Tin, RHin, Tout, RHout, elevM);
+  if (a.condensationRisk) return -Infinity;
+  if (a.deltaAH > 0.3 && a.deltaH > 0.5) return -Infinity; // wetter AND warmer
+  const moisture = -a.deltaAH; // >0 → dries the room [g/m³]
+  const dT = Tin - Tout; // >0 → outside cooler
   const thermal =
-    Tin > COMFORT.tHi ? 0.25 * Math.max(-2, dT)   // too warm: cooling helps; warmer outside costs (capped)
-    : Tin < COMFORT.tLo ? -0.05 * Math.max(0, dT) // already cool: extra cold costs a little
-    : -0.03 * Math.max(0, dT - 8)                 // comfy: only extreme cold costs
-  const speed = 1 + Math.min(0.5, Math.abs(dT) / 20) + Math.min(0.3, wind / 40)
-  return (moisture + thermal) * speed
+    Tin > COMFORT.tHi
+      ? 0.25 * Math.max(-2, dT) // too warm: cooling helps; warmer outside costs (capped)
+      : Tin < COMFORT.tLo
+        ? -0.05 * Math.max(0, dT) // already cool: extra cold costs a little
+        : -0.03 * Math.max(0, dT - 8); // comfy: only extreme cold costs
+  const speed = 1 + Math.min(0.5, Math.abs(dT) / 20) + Math.min(0.3, wind / 40);
+  return (moisture + thermal) * speed;
 }
 
 // Best contiguous run of hours scoring above a meaningful-benefit threshold.
-// Returns { start, end, score, dT, dAH, wind } (peak hour's numbers) or null.
-export function bestVentWindow(hours, Tin, RHin, elevM = 0, now = Date.now()) {
-  if (!hours || !hours.length) return null
-  const fut = hours.filter(h => h.ts + 3600000 > now).slice(0, 24)
-  let best = null, cur = null
-  const close = () => { if (cur && (!best || cur.score > best.score)) best = cur; cur = null }
+// Returns the peak hour's numbers, or null.
+export interface VentHour {
+  ts: number;
+  time: Date;
+  temp: number;
+  humidity: number;
+  wind?: number | null;
+}
+export interface VentWindow {
+  start: Date;
+  end: Date;
+  score: number;
+  dT: number;
+  dAH: number;
+  wind: number;
+}
+export function bestVentWindow(
+  hours: readonly VentHour[] | null | undefined,
+  Tin: number,
+  RHin: number,
+  elevM = 0,
+  now = Date.now(),
+): VentWindow | null {
+  if (!hours || !hours.length) return null;
+  const fut = hours.filter((h) => h.ts + 3600000 > now).slice(0, 24);
+  let best: VentWindow | null = null;
+  let cur: VentWindow | null = null;
+  const close = () => {
+    if (cur && (!best || cur.score > best.score)) best = cur;
+    cur = null;
+  };
   for (const h of fut) {
-    const s = ventScore(Tin, RHin, h.temp, h.humidity, h.wind ?? 0, elevM)
+    const s = ventScore(Tin, RHin, h.temp, h.humidity, h.wind ?? 0, elevM);
     if (s > 1) {
-      if (!cur) cur = { start: h.time, end: h.time, score: -Infinity }
-      cur.end = h.time
+      if (!cur) cur = { start: h.time, end: h.time, score: -Infinity, dT: 0, dAH: 0, wind: 0 };
+      cur.end = h.time;
       if (s > cur.score) {
-        const a = ventilationAssessment(Tin, RHin, h.temp, h.humidity, elevM)
-        Object.assign(cur, { score: s, dT: Tin - h.temp, dAH: -a.deltaAH, wind: h.wind ?? 0 })
+        const a = ventilationAssessment(Tin, RHin, h.temp, h.humidity, elevM);
+        Object.assign(cur, { score: s, dT: Tin - h.temp, dAH: -a.deltaAH, wind: h.wind ?? 0 });
       }
-    } else close()
+    } else close();
   }
-  close()
-  return best
+  close();
+  return best;
+}
+
+export interface VentAssessment {
+  ahIn: number;
+  ahOut: number;
+  deltaAH: number;
+  hIn: number;
+  hOut: number;
+  deltaH: number;
+  dpIn: number;
+  dpOut: number;
+  condensationRisk: boolean;
 }
 
 // `elevationM` = site elevation; indoor and outdoor share it, so it enters
 // only through the enthalpy magnitudes (site pressure), never asymmetrically.
-export function ventilationAssessment(Tin, RHin, Tout, RHout, elevationM = 0) {
-  const p = pressureAtElevation(elevationM)
-  const ahIn = absoluteHumidity(Tin, RHin)
-  const ahOut = absoluteHumidity(Tout, RHout)
-  const hIn = specificEnthalpy(Tin, RHin, p)
-  const hOut = specificEnthalpy(Tout, RHout, p)
-  const dpIn = dewPoint(Tin, RHin)
-  const dpOut = dewPoint(Tout, RHout)
+export function ventilationAssessment(
+  Tin: number,
+  RHin: number,
+  Tout: number,
+  RHout: number,
+  elevationM = 0,
+): VentAssessment {
+  const p = pressureAtElevation(elevationM);
+  const ahIn = absoluteHumidity(Tin, RHin);
+  const ahOut = absoluteHumidity(Tout, RHout);
+  const hIn = specificEnthalpy(Tin, RHin, p);
+  const hOut = specificEnthalpy(Tout, RHout, p);
+  const dpIn = dewPoint(Tin, RHin);
+  const dpOut = dewPoint(Tout, RHout);
 
-  const deltaAH = ahOut - ahIn   // + → outside more humid
-  const deltaH = hOut - hIn      // + → outside more total heat
-  const condensationRisk = dpOut > Tin
+  const deltaAH = ahOut - ahIn; // + → outside more humid
+  const deltaH = hOut - hIn; // + → outside more total heat
+  const condensationRisk = dpOut > Tin;
 
   return {
-    ahIn, ahOut, deltaAH,
-    hIn, hOut, deltaH,
-    dpIn, dpOut,
+    ahIn,
+    ahOut,
+    deltaAH,
+    hIn,
+    hOut,
+    deltaH,
+    dpIn,
+    dpOut,
     condensationRisk,
-  }
+  };
 }
