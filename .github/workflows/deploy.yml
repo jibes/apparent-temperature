@@ -3,16 +3,6 @@ name: Deploy to GitHub Pages
 on:
   push:
     branches: [main]
-    # Web sources only: a version bump (package.json) releases the APK via
-    # android.yml without redeploying the web.
-    paths:
-      - 'src/**'
-      - 'public/**'
-      - index.html
-      - vite.config.ts
-      - tsconfig.json
-      - .github/workflows/deploy.yml
-      - .github/workflows/ci.yml
   workflow_dispatch:
 
 permissions:

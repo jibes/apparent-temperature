@@ -44,7 +44,7 @@ List deviations from it here, each with a reason.
 - **No `src/workers/`:** nothing is heavy enough; the biggest computation (series for ~390 hours) is memoized.
 - **Dev build versions:** non-release APKs carry the plain `package.json` version, not "last tag + commits". Every APK is built in CI, and release builds are tag-gated, so the two can't be confused.
 - **UI language follows the device** (German or English); there is no in-app switch.
-- **Deploy path filter excludes `package*.json`:** per the standard a version bump must not redeploy the web; a dependency-only update therefore deploys with the next web change or a manual run of `deploy.yml`.
+- **No path filters on push to `main`:** `deploy.yml` and `android.yml` run on every push to `main`, so a version bump also redeploys the web. Releases stay tag-gated, so an extra Android build never publishes twice.
 
 ## Done checklist (before every push)
 
