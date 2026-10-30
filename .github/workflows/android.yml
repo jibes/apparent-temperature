@@ -190,11 +190,18 @@ jobs:
           "$adb" logcat -c
           "$adb" shell am start -W -n "$APP_ID/.MainActivity"
           sleep 25
+          # The tab bar renders in either language. The WebView's accessibility
+          # tree can lag behind the render, so retry the dump for up to a minute.
+          rendered=
+          for _ in $(seq 1 12); do
+            # uiautomator itself is sometimes killed on the device (exit 137); retry.
+            "$adb" shell uiautomator dump /sdcard/ui.xml >/dev/null || true
+            "$adb" pull /sdcard/ui.xml ui.xml >/dev/null 2>&1 || true
+            grep -sEq 'Feels like|Gefühlt' ui.xml && { rendered=1; break; }
+            sleep 5
+          done
           "$adb" logcat -d > logcat.txt
-          "$adb" shell uiautomator dump /sdcard/ui.xml >/dev/null
-          "$adb" pull /sdcard/ui.xml ui.xml >/dev/null
-          # The tab bar renders in either language.
-          grep -Eq 'Feels like|Gefühlt' ui.xml || { echo "::error::App UI did not render"; cat ui.xml; exit 1; }
+          [ -n "$rendered" ] || { echo "::error::App UI did not render"; cat ui.xml; exit 1; }
           # Web errors: console.error/uncaught exceptions from the WebView, CSP violations.
           if grep -E 'E Capacitor/Console|Uncaught|Content Security Policy' logcat.txt; then
             echo "::error::Web errors in logcat"
