@@ -1,0 +1,7 @@
+{
+  "appId": "net.bruenecke.apparenttemperature",
+  "appName": "Gefühlt",
+  "webDir": "dist",
+  "server": { "androidScheme": "https" },
+  "android": { "allowMixedContent": false }
+}
